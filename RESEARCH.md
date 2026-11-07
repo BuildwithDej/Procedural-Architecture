@@ -1,42 +1,85 @@
 # Research
 
-Only sources opened for milestone 1 are listed. The generator topics below were not read. Do not treat them as researched.
+Lab notebook for milestone 1. It lists ideas we actually tried, what worked, what failed, and what we threw out. It is not a literature review. Nothing below is a solver result. Papers named for a later generator were not opened.
 
-## Consulted
+## Kept
 
-### Vite guide — Getting Started
+| Idea | What we saw | Where it lives |
+| --- | --- | --- |
+| One room object is the only state. The 3D view and the plan both read it. | Editing width changes both pictures. Invalid numbers (`-2`, `abc`, `Infinity`, a door that no longer fits) show a sentence and do not draw a broken mesh. | `data/*.json`, `src/model/parse.ts` |
+| Dark desktop layout. Slim top bar, dimensions on the left, model in the middle, small plan at the bottom right. | Dej chose this after seeing the concept. The running page matches it. | `src/style.css` |
+| Orthographic camera. Parallel edges stay parallel. Scroll changes zoom, not camera distance. | Fit tests pass for the example, the tiny room, the huge room, and a 0.4 m room, in wide, square, and tall views. The browser orbit before the lighting pass still looked parallel. | `src/view3d/frame.ts` |
+| Example bedroom 4.20 × 3.60 × 2.70 m, not the 4 × 5 × 2.8 written on the concept sketch. | The sketch was a layout guide. Those numbers were not the room. | `data/example-bedroom.json` |
+| Empty plan. North up. Cut at 1.20 m, or half the height if the room is shorter. | Door and window show as gaps. A clerestory whose sill is above the cut stays solid wall. No furniture. | `src/plan/project.ts` |
+| Door height, window sill, and window height stored in the room data. | The short brief only named wall, position, and width. Hiding those three numbers in the renderer would have made the picture lie. | `src/model/types.ts` |
+| Walls 0.12 m thick, drawn outside the interior size. Side walls tuck 1 cm into the long walls. | Interior dimensions stay exact. The corner does not flicker. | `src/model/geometry.ts` |
+| Soft daylight on a matte warm-gray model. Key from above and to the south-west, dim fill opposite, low ambient, ACES exposure 1.08. | The after screenshot shows a real shadow on the floor and darker faces, not a flat wash. | `src/view3d/scene.ts`, `/opt/cursor/artifacts/after_lighting_cutaway.png` |
+| Two nearest walls drawn at 30% of the height. | The floor reads as a cutaway. Height in the inspector stays 2.70 m. The plan stays a full rectangle. | `src/view3d/cutaway.ts` |
+| Which walls are short follows the camera, with a small hold at the centre line. | Unit test: south-east camera keeps south and east; a wobble across the centre does not flip; a north-west camera flips to north and west. | `tests/cutaway.test.ts` |
+| Dimension text sits beside the line, not in a gap cut through the stroke. | 3.60 m and 4.20 m are readable in the after shot. | `src/plan/project.ts`, `src/view3d/dimensions.ts` |
 
-- https://vite.dev/guide/
-- Opened while scaffolding this app.
-- Takeaway: `index.html` is the entry, not a file buried in a server. This project needs Node 22.12 or newer (Vite’s current major also accepts 20.19+). `npm create vite` with the `vanilla-ts` template, then `vite`, `vite build`, and `vite preview`.
-- Applies to: the scripts in `package.json` and the dev server on port 43123.
-- Uncertain: nothing for this milestone. Production browser targets were not tuned.
+## Failed, then replaced
 
-### Vitest guide — Getting Started
+| Idea | What failed | What replaced it |
+| --- | --- | --- |
+| Even Lambert lighting, a strong ambient fill, and a painted dark blob under the room. | The first running room looked flat. Dej asked for soft daylight after seeing it. The blob would also have fought a real shadow. | Standard matte materials, one shadow-casting key light, a weak fill. The blob was removed. |
+| `PCFSoftShadowMap` for a soft shadow. | Three.js 0.187 logs that this type was removed and falls back to ordinary PCF. The warning showed up in the dev server. | Explicit `PCFShadowMap` with blur radius 5, on a 2048² map. |
+| Dimension labels as sprites sitting on the dimension line, and plan text in a broken gap in the stroke. | On orbit the sprites bunched at a corner. On the tiny plan the stroke cut through the figures. | Continuous dimension lines. Labels offset outward. |
+| `hidden` on the plan `<svg>`. | Typecheck failed. This TypeScript DOM lib does not put `hidden` on `SVGSVGElement`. | A CSS class, `is-hidden`. |
+| Plan corner at `(0, -0)`. | A test expected `(0, 0)`. Negating zero produced negative zero. | `worldToPlan` turns zero into plain `0`. |
+| Headless Chrome on the default profile, to grab the after screenshot. | Chrome was already open. The second process aborted rather than share the profile. | A separate `--user-data-dir`. That write produced the after image. |
 
-- https://vitest.dev/guide/
-- Takeaway: tests are files named `*.test.*`. `vitest run` executes once and exits. Vitest reads the Vite config. The guide asked for Vite 6.4+ and Node 22.12+.
-- Applies to: `tests/` and `vite.config.ts`.
-- Uncertain: nothing for these unit tests. They do not need a browser.
+## Trashed
 
-### three.js `OrbitControls` (installed source)
+These are not in the app, and they are not waiting as the next step.
 
-- `node_modules/three/examples/jsm/controls/OrbitControls.js` in three.js 0.187.0, plus the matching notes in `@types/three`.
-- The docs index at https://threejs.org/docs/#examples/en/controls/OrbitControls lists `OrbitControls` under addons. A fetch of `https://threejs.org/manual/en/creating-a-scene.html` returned 404, so the camera behaviour below is from the installed source, not from that manual page.
-- Takeaway: left-drag orbits, the wheel zooms, right-drag pans, and `update()` is required when damping is on. For `OrthographicCamera`, zoom changes `camera.zoom` and calls `updateProjectionMatrix`. It does not dolly the camera distance unless zoom-to-cursor is on. The orthographic type itself says an object’s size does not depend on its distance from the camera. `left`, `right`, `top`, and `bottom` are the frustum; `updateProjectionMatrix()` runs after they change. Near must be less than far.
-- Applies to: `src/view3d/scene.ts` and `src/view3d/frame.ts`. Scroll zooms. Resize recomputes the frustum. The fit tests in `tests/frame.test.ts` check the parallel projection without starting WebGL.
-- Uncertain: how large a room WebGL will still draw cleanly. The unit tests accept a 40 m room and a 0.05 m room as finite geometry. The browser check uses the built-in tiny and huge examples.
+| Idea | Why it was thrown out |
+| --- | --- |
+| Warm off-white page as the milestone 1 workspace. | Dej selected the dark concept. A warm sheet is a different, later drawing surface, not this screen. |
+| Perspective camera. | Dej asked for an orthogonal view. Perspective would shrink the far wall and fight the plan. |
+| Copying the concept image’s furniture, extra partitions, and 4 × 5 × 2.8 m. | The image was a layout sketch. The furniture in its plan was an accident. Milestone 1 is an empty room. |
+| Inventing `plan-01.png`. | No reference image was supplied. A made-up plan would pretend to be Dej’s drawing. |
+| A floor grid, and ink edges on every wall box. | Both read as a stock 3D demo. The plan already carries the measured lines. |
+| Screen-space ambient occlusion. | Heavy, and easy to get wrong on an orthographic camera. Contact shade is the floor darkening toward the walls plus the real shadow. |
+| Variance shadow maps. | Not run. In this Three.js version, receivers also cast, which smears shadows. PCF plus a radius was enough. |
+| A decision-log panel in the page. | It would be a second product. This file is the notebook. |
+| A second room, wall dragging, furniture, or a rule solver inside milestone 1. | Out of scope until Dej asks. |
 
-## Not consulted
+## Parked, not trashed
 
-These were named for later and were not opened for milestone 1:
+| Idea | Status |
+| --- | --- |
+| Full-workspace tracing sheet: warm paper inside the dark shell, charcoal lines, faint dimensions, hideable muted-blue sketches. | Written down in `SPEC.md`. Not built. Needs a later milestone. |
+| Hinge side of the door. | The graphic hinges at the start of the opening and swings into the room. That is a drawing choice, not a clearance check. Change it if the swing feels wrong. |
+| Clearance rules (bed, wardrobe, desk, walking path, door swing, window, stay inside the walls). | Placeholder numbers only. Not verified, not enforced. |
+| Orbit after the cutaway: do the short walls actually swap when you walk around the model? | The unit test says which pair is chosen. Nobody re-orbited the lit model in the browser after the cutaway landed. Treat that as unchecked. |
 
-- CityEngine and CGA
-- Müller et al. 2006, Procedural Modeling of Buildings
-- Wonka et al. 2003, Instant Architecture
-- Merrell et al. 2010, Computer-Generated Residential Building Layouts
-- Wave function collapse, Townscaper, Grasshopper, Houdini
-- The Sims build mode, OR-Tools
-- Shape grammars, binary space partitions, and graph floor plans, beyond the names
+## Sources actually opened
 
-No paper, manual, or sample from that list was read. There is no reference image in the repo. `plan-01.png` was not provided and was not invented.
+### Vite — Getting Started
+
+https://vite.dev/guide/
+
+`index.html` is the app entry. Node 22.12 or newer. Scripts are `vite`, `vite build`, and `vite preview`. Used for the dev server on port 43123.
+
+### Vitest — Getting Started
+
+https://vitest.dev/guide/
+
+Test files are `*.test.*`. `vitest run` runs once. Vitest reads the Vite config. Used for `tests/`.
+
+### three.js OrbitControls and orthographic camera
+
+Installed `OrbitControls.js` and `@types/three` in three.js 0.187.0. The docs index lists `OrbitControls` under addons: https://threejs.org/docs/#examples/en/controls/OrbitControls
+
+A fetch of `https://threejs.org/manual/en/creating-a-scene.html` returned 404, so the camera notes come from the installed source, not that manual.
+
+Left-drag orbits, the wheel zooms, right-drag pans. With an orthographic camera, zoom changes `camera.zoom` instead of moving the camera in. `PCFSoftShadowMap` is still named in the types, but `WebGLShadowMap.js` warns that it has been removed. That warning is what killed the soft-shadow type above.
+
+Still uncertain: how coarse the 2048² shadow becomes on rooms much larger than the 40 m example. Not measured in the browser after the lighting change.
+
+## Not opened
+
+These names were written down for later. They were not read, and none of them decided milestone 1:
+
+CityEngine and CGA. Müller et al. 2006. Wonka et al. 2003. Merrell et al. 2010. Wave function collapse, Townscaper, Grasshopper, Houdini. The Sims build mode. OR-Tools. Shape grammars, binary space partitions, and graph floor plans, beyond the names.
