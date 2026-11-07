@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   build: {
     rollupOptions: {
-      input: ["index.html", "asset-preview.html", "fit.html"],
+      input: ["index.html"],
     },
   },
   server: {

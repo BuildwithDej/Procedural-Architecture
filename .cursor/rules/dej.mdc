@@ -1,14 +1,16 @@
 ---
-description: Dej room study — milestone gate, data model, and presentation
+description: Procedural Architecture is a boundary-to-form generator
 alwaysApply: true
 ---
 
-# Dej
+# Procedural Architecture
 
-Read `AGENTS.md`, then the status at the top of `ARCHITECTURE.md`, before editing.
+The product is one site outline and a seeded exterior of 1 to 5 hollow floors. Read `ARCHITECTURE.md` before editing.
 
-One milestone at a time. Stop for Dej’s approval. Milestone 1 is the orthographic room and the empty plan. Do not start wall dragging, furniture, rules, tracing, accounts, or a second room unless Dej asks.
+The page is `index.html`. Do not add rooms, furniture, a fit demo, or an asset gallery unless the user asks.
 
-The room object is the only state. Both views read it. The 3D camera stays orthographic. The dark desktop layout is the milestone 1 presentation. The warm full-page tracing sheet is a later design and is not implemented.
+Floor height, slab thickness, and wall thickness in `FORM_DESIGN` are design choices. The area and edge limits in `FORM_SUPPORT` are editor support limits, not zoning. Do not describe either as a legal minimum.
 
-Do not invent a reference plan image. Do not claim research that is not written in `RESEARCH.md`. If a rule can be read two ways, ask Dej instead of choosing.
+A floor stays inside the site only when the continuous polygon test passes. Do not replace that test with a few samples along an edge.
+
+Upper floors sit on the plate below. Do not add a cantilever unless the user asks. The same boundary, floor count, and seed must rebuild the same form.
