@@ -302,9 +302,10 @@ describe("hollow form", () => {
       boundary: FORM_PRESETS.rectangle ?? [],
       floors: 2,
       seed: 1,
-      controls: { coverage: 0.9, setback: 0, twistDeg: 0, organic: 0 },
+      controls: { coverage: 1.01, setback: 0, twistDeg: 0, organic: 0 },
     });
     expect(result.ok).toBe(false);
+    expect(validateControls({ coverage: 1, setback: 0, twistDeg: 0, organic: 0 }).ok).toBe(true);
   });
 
   it("lets coverage, setback, twist, and shape change the same site", () => {
@@ -357,6 +358,47 @@ describe("hollow form", () => {
     expect(Math.abs(angleOf(upperEdge) - angleOf(groundEdge))).toBeGreaterThan(0.15);
     const again = generateForm({ ...shared, controls: { coverage: 0.3, setback: 0.55, twistDeg: 0, organic: 1 } });
     expect(again.ok && JSON.stringify(again.ok ? again.form.floors : []) === JSON.stringify(round.form.floors)).toBe(true);
+  });
+
+  it("increases coverage on rectangle, L, notch, and skew up to the outline", () => {
+    const levels = [0.18, 0.34, 0.7, 1] as const;
+    for (const name of ["rectangle", "ell", "notch", "skew"] as const) {
+      const boundary = FORM_PRESETS[name];
+      if (!boundary) throw new Error(name);
+      let previous = 0;
+      for (const coverage of levels) {
+        const result = generateForm({
+          boundary,
+          floors: 3,
+          seed: 4,
+          controls: { coverage, setback: 0.2, twistDeg: 0, organic: 0 },
+        });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(formContainmentIssues(result.form)).toEqual([]);
+        expect(result.form.coverageTarget).toBe(coverage);
+        expect(result.form.coverageActual).toBeGreaterThan(previous + 0.05);
+        previous = result.form.coverageActual;
+        if (coverage === 1) expect(result.form.coverageActual).toBeGreaterThan(0.9);
+        if (coverage === 0.34 && (name === "ell" || name === "notch")) {
+          expect(result.form.coverageActual).toBeLessThan(0.5);
+          expect(result.form.floors[0]?.outer.length).toBe(4);
+        }
+        if (coverage === 1 && (name === "ell" || name === "notch")) {
+          expect((result.form.floors[0]?.outer.length ?? 0) >= boundary.length).toBe(true);
+        }
+      }
+      const roundedFull = generateForm({
+        boundary,
+        floors: 1,
+        seed: 4,
+        controls: { coverage: 1, setback: 0, twistDeg: 12, organic: 1 },
+      });
+      expect(roundedFull.ok).toBe(true);
+      if (!roundedFull.ok) return;
+      expect(formContainmentIssues(roundedFull.form)).toEqual([]);
+      expect(roundedFull.form.coverageActual).toBeGreaterThan(0.85);
+    }
   });
 
   it("keeps extreme slider combinations inside a concave site", () => {

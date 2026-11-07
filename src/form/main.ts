@@ -57,6 +57,7 @@ app.innerHTML = `
       <label class="slider">Coverage <output id="coverage-out"></output>
         <input id="coverage" type="range" min="${FORM_CONTROLS.coverageMin}" max="${FORM_CONTROLS.coverageMax}" step="0.01" value="${initialCoverage}" />
       </label>
+      <p class="meta" id="coverage-readout"></p>
       <label class="slider">Setback <output id="setback-out"></output>
         <input id="setback" type="range" min="${FORM_CONTROLS.setbackMin}" max="${FORM_CONTROLS.setbackMax}" step="0.01" value="${initialSetback}" />
       </label>
@@ -97,7 +98,7 @@ app.innerHTML = `
         <button type="button" data-preset="skew">Skew</button>
       </div>
       <p class="status" id="form-status"></p>
-      <p>Coverage is a fraction of the site. Setback 0 keeps the same plate; 1 steps back hard. Twist is degrees per level. Shape 0 is a rectangle and 1 is a rounded outline with at most ${FORM_CONTROLS.maxCornerSegments} segments per corner. Floor height ${FORM_DESIGN.floorHeightM} m, slab ${FORM_DESIGN.slabThicknessM} m, and wall ${FORM_DESIGN.wallThicknessM} m are design choices. Sites under ${FORM_SUPPORT.minSiteAreaM2} m² or sides under ${FORM_SUPPORT.minSiteEdgeM} m are outside what this editor supports, not a zoning rule.</p>
+      <p>Coverage is the target share of the site, from 18% to 100%. The outline may be touched. Setback 0 keeps the same plate; 1 steps back hard. Twist is degrees per level. Shape 0 is a rectangle and 1 rounds corners, with at most ${FORM_CONTROLS.maxCornerSegments} segments on a corner. If that shape cannot reach the target, the plate follows the outline and the page shows target and actual. Floor height ${FORM_DESIGN.floorHeightM} m, slab ${FORM_DESIGN.slabThicknessM} m, and wall ${FORM_DESIGN.wallThicknessM} m are design choices. Sites under ${FORM_SUPPORT.minSiteAreaM2} m² or sides under ${FORM_SUPPORT.minSiteEdgeM} m are outside what this editor supports, not a zoning rule.</p>
     </aside>
     <div class="stage">
       <canvas id="view"></canvas>
@@ -686,6 +687,16 @@ function resize(): void {
   drawBoard();
 }
 
+function setCoverageReadout(target: number | null, actual: number | null): void {
+  const readout = document.querySelector("#coverage-readout");
+  if (!(readout instanceof HTMLElement)) return;
+  if (target === null || actual === null) {
+    readout.textContent = "";
+    return;
+  }
+  readout.textContent = `Target ${Math.round(target * 100)}%. Actual ${Math.round(actual * 100)}%.`;
+}
+
 function setStatus(text: string, ok: boolean): void {
   statusEl.textContent = text;
   statusEl.className = ok ? "status ok" : "status bad";
@@ -698,6 +709,7 @@ function readControl(id: string, fallback: number): number {
   const value = node instanceof HTMLInputElement ? Number(node.value) : fallback;
   if (output instanceof HTMLElement) {
     if (id === "twist") output.textContent = `${Math.round(value)}°`;
+    else if (id === "coverage") output.textContent = `${Math.round(value * 100)}%`;
     else if (id === "organic") output.textContent = value < 0.02 ? "0 box" : value > 0.98 ? "1 round" : value.toFixed(2);
     else output.textContent = value.toFixed(2);
   }
@@ -714,6 +726,7 @@ function rebuild(): void {
     clearBuilding();
     currentForm = null;
     renderPlanFloors(null);
+    setCoverageReadout(null, null);
     const area = points.length >= 3 ? polygonArea(points) : 0;
     meta.textContent = points.length === 0 ? "No corners yet." : `${points.length} corners${area ? `, about ${area.toFixed(1)} m²` : ""}. Not closed.`;
     setStatus("Close the outline to generate the floors.", false);
@@ -726,6 +739,7 @@ function rebuild(): void {
     clearBuilding();
     currentForm = null;
     renderPlanFloors(null);
+    setCoverageReadout(null, null);
     setStatus(boundary.issues.join(" "), false);
     return;
   }
@@ -734,6 +748,7 @@ function rebuild(): void {
     clearBuilding();
     currentForm = null;
     renderPlanFloors(null);
+    setCoverageReadout(null, null);
     setStatus(floors.issues.join(" "), false);
     return;
   }
@@ -748,12 +763,14 @@ function rebuild(): void {
     clearBuilding();
     currentForm = null;
     renderPlanFloors(null);
+    setCoverageReadout(coverage, null);
     setStatus(result.issues.join(" "), false);
     return;
   }
   showForm(result.form);
   const varied = new Set(result.form.floors.map((floor) => JSON.stringify(floor.outer))).size;
   const repeated = result.form.floors.filter((floor) => floor.index > 0 && !floor.stepped).length;
+  setCoverageReadout(result.form.coverageTarget, result.form.coverageActual);
   const limitText = result.form.limits.length > 0 ? ` ${result.form.limits.join(" ")}` : "";
   setStatus(
     `${result.form.floorCount} closed ${result.form.floorCount === 1 ? "floor" : "floors"}, seed ${result.form.seed}. ${varied} distinct plate${varied === 1 ? "" : "s"}.${repeated ? ` ${repeated} level${repeated === 1 ? "" : "s"} repeat the plate below.` : ""}${limitText}`,
