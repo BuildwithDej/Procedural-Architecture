@@ -19,3 +19,6 @@ These are starter prompts written for this repo. Dej did not write them. Each on
 
 6. **“Change an asset by editing its plain data: mattress id, desk spec, or wardrobe request. Do not scale the queen mesh. Do not put the asset into the room study.”**
    The preview and the GLB both read that data. Footprint stays separate from the dressed mesh. An invalid wardrobe request should come back as errors and an alternative, not a resized carcass.
+
+7. **“If a fit fails, show the reason and only offer an alternative that already passes the same checks. Do not move the door or window, and do not change the mattress unless the user asked.”**
+   `fit.html` is the first placer. It is not a general solver.

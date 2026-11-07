@@ -54,7 +54,11 @@ export function mountApp(root: HTMLElement): void {
   assetLink.className = "asset-link";
   assetLink.href = "/asset-preview.html";
   assetLink.textContent = "Asset preview";
-  trail.append(assetLink, milestone);
+  const fitLink = document.createElement("a");
+  fitLink.className = "asset-link";
+  fitLink.href = "/fit.html";
+  fitLink.textContent = "Fit demo";
+  trail.append(assetLink, fitLink, milestone);
   bar.append(mark, roomTitle, trail);
 
   const inspector = document.createElement("aside");

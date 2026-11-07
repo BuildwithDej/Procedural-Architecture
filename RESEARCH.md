@@ -19,6 +19,10 @@ Dej asked for original models after the GitHub import, then a wall-mounted desk,
 
 The bedroom page was rebuilt once after the first mesh came out inside-out (bow-tie quads). The second capture shows solid panels, a split upholstered headboard, layered pillows, a draped duvet, two floating nightstands, and a warm strip that lights the timber. Known gaps: the fabric noise is still coarse up close, the duvet folds are broad, brackets are a simple plate-and-strut, and there is no global illumination.
 
+The desk then gained a blank monitor, keyboard, and mouse, checked so they stay on the top and clear of each other. Asset cameras fit the mesh bounds so the whole object is in frame.
+
+`src/library/fit.ts` is the first placer. It is deterministic and does not search a grid. The fits bedroom (5.0 × 4.2 × 2.7 m, door on the south, window on the east) takes the queen group on the north wall, then a desk and a wardrobe. The tiny room and the original example bedroom do not, and the example does not get a suggestion to move its window. A south-wall request on the fits bedroom offers the north wall only because that rerun places the bed. Clearances stay 0.60 m and 0.90 m as product choices.
+
 ## Kept
 
 | Idea | What we saw | Where it lives |

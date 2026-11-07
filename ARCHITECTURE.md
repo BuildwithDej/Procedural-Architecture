@@ -47,7 +47,22 @@ later solver  →  reads footprint and clearance metadata, not the dressed mesh
 | Desk | One wall-mounted oak top, 1.20 × 0.52 × 0.032 m, surface at 0.74 m, on three pale brackets. The floor under it is clear. The mount record says the desk needs a wall and that the fixing is not assessed. Sizes are design choices. |
 | Wardrobe | A request: bay count, clear bay width, usable depth, height, and a section per bay (hanging, shelves, drawers, or hanging over drawers). Carcass thickness stays 0.018 m. Usable depth is not shrunk to force a fit. An invalid request returns errors and a suggested alternative. It does not build a quiet compromise. Two valid requests are in the preview. Door swing is an access envelope outside the closed footprint. |
 
-Generated files in `library/` are the queen bedroom set, the desk, both closed wardrobes, and `metadata.json`. The GLB has the meshes and material factors. The page adds procedural fabric and timber textures that are not photographs.
+Generated files in `library/` are the queen bedroom set, the desk with its computer, both closed wardrobes, and `metadata.json`. The GLB has the meshes and material factors. The page adds procedural fabric and timber textures that are not photographs. Grain is one texture tile per module, so a repeated panel is not a stretched panel.
+
+The desk carries one generic computer: a slim blank screen on a neck and base, a keyboard, and a mouse. They sit on the top. The screen has no trademark and no interface.
+
+## First fit
+
+`fit.html` is a demo, not a finished solver. It places the bed group, then the desk, then the wardrobe, in a rectangular room. The same placement drives the plan rectangles and the 3D meshes.
+
+- The bed, two nightstands, and the wall treatment are one group on the chosen wall.
+- Side clearance is 0.60 m of clear floor outside that group. Foot clearance is 0.90 m beyond the foot. Both are product choices, not a legal minimum.
+- A door or window on that wall blocks the stretch it occupies. Door swing is the bounding box of the existing swing arc. The wardrobe also reserves its open-door sweep.
+- Full wall repeats the 0.40 m module from the start of the wall and drops a module that would pass the end or cover an opening. Bed surround uses the modules built with the bed. LEDs stay centred on the bed. If that run would leave the wall or cross an opening, the bed is not placed and the opening is not moved.
+- Mattress size and wardrobe sections are never changed to force a fit. A failed bed wall can offer another wall, or the other panelling mode, only after that alternative places the bed. The button applies it. Nothing is applied by itself.
+- Invalid, non-finite, and huge rooms do not start a grid search. A huge room centres the bed.
+- If the desk or wardrobe has no free stretch, it stays unplaced and the reason is shown. The bed can still be placed.
+- Straight rectangular rooms only. No tracing, no voice, no polygon rooms, and no code-compliance claim.
 
 ## Presentation
 

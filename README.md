@@ -10,7 +10,7 @@ The sizes below are demonstration numbers for this study. They are not a buildin
 
 The room study is only a local web page. `127.0.0.1` means the computer where Vite is running, not some other laptop.
 
-Asset models are a separate page and are not dropped into this room: [http://127.0.0.1:43123/asset-preview.html](http://127.0.0.1:43123/asset-preview.html).
+Asset models are a separate page and are not dropped into this room: [http://127.0.0.1:43123/asset-preview.html](http://127.0.0.1:43123/asset-preview.html). The first placement demo is [http://127.0.0.1:43123/fit.html](http://127.0.0.1:43123/fit.html). It is not a finished solver.
 
 ```bash
 npm install
