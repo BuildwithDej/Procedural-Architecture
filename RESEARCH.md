@@ -21,7 +21,9 @@ The bedroom page was rebuilt once after the first mesh came out inside-out (bow-
 
 The desk then gained a blank monitor, keyboard, and mouse, checked so they stay on the top and clear of each other. Asset cameras fit the mesh bounds so the whole object is in frame.
 
-`src/library/fit.ts` is the first placer. It is deterministic and does not search a grid. The fits bedroom (5.0 × 4.2 × 2.7 m, door on the south, window on the east) takes the queen group on the north wall, then a desk and a wardrobe. The tiny room and the original example bedroom do not, and the example does not get a suggestion to move its window. A south-wall request on the fits bedroom offers the north wall only because that rerun places the bed. Clearances stay 0.60 m and 0.90 m as product choices.
+`src/library/fit.ts` is the first placer. It is deterministic and does not search a grid. The fits bedroom (5.0 × 4.2 × 2.7 m, door on the south, window on the east) takes the queen group on the north wall. The desk is locked to the opposite wall, in line with the bed, and the wardrobe to the sitter's left. On that room those are the south and west walls. The tiny room and the original example bedroom do not fit, and neither gets a moved window. Clearances stay 0.60 m and 0.90 m as product choices.
+
+The first fit drew the timber panels on the room side of local zero but then placed local zero on the interior face, so the 20 mm panels sat inside the wall solid and z-fought its face. The panels, band, desk, and wardrobe now keep a 2 mm air gap and their thickness in the room. A chair sits in the right-hand gap under the desk, clear of the three brackets, with the back beyond the front edge.
 
 ## Kept
 

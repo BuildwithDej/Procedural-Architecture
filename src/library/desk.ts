@@ -1,5 +1,5 @@
 import { partBounds, unionBounds } from "./bounds.ts";
-import { boxBetween, roundedBox } from "./mesh.ts";
+import { boxBetween, roundedBox, transformPart } from "./mesh.ts";
 import type { Aabb, MeshPart } from "./types.ts";
 
 /**
@@ -51,6 +51,26 @@ export const COMPUTER = {
   mouseCenterXM: 0.3,
 } as const;
 
+/**
+ * One chair for this desk. Seat height and pull-out are product assumptions, not a code or a measured standard.
+ * The seat is in the right-hand gap between brackets so the centre bracket stays clear.
+ */
+export const CHAIR = {
+  seatWidthM: 0.4,
+  seatDepthM: 0.38,
+  seatHeightM: 0.45,
+  seatThicknessM: 0.028,
+  backWidthM: 0.38,
+  backHeightM: 0.32,
+  backThicknessM: 0.018,
+  legSizeM: 0.028,
+  centerXM: 0.23,
+  /** Front of the seat, just under the desk's front edge, in desk-local metres from the wall. */
+  seatFrontZM: 0.515,
+  pullOutM: 0.35,
+  seatNote: "Seat height 0.45 m and a 0.35 m pull-out are assumptions for this chair, not a regulation.",
+} as const;
+
 export interface DeskModel {
   id: string;
   parts: MeshPart[];
@@ -74,6 +94,17 @@ export interface DeskModel {
     containedOnTop: boolean;
     screen: "blank-panel";
   };
+  chair: {
+    facesDesk: boolean;
+    clearsBrackets: boolean;
+    tucked: Aabb;
+    pullOut: Aabb;
+    seatHeightM: number;
+    pullOutM: number;
+    note: string;
+  };
+  /** Desk, computer, and the chair pulled out to use. */
+  useBounds: Aabb;
 }
 
 export function buildDesk(): DeskModel {
@@ -142,7 +173,7 @@ export function buildDesk(): DeskModel {
     );
   }
 
-  parts.push(...computerParts(spec.surfaceHeightM));
+  parts.push(...computerParts(spec.surfaceHeightM), ...chairParts());
 
   const underside = spec.surfaceHeightM - spec.topThicknessM;
   return {
@@ -170,6 +201,8 @@ export function buildDesk(): DeskModel {
       containedOnTop: computerContained(parts),
       screen: "blank-panel",
     },
+    chair: chairRecord(parts),
+    useBounds: unionBounds([...parts, ...chairParts().map((part) => transformPart(part, { translate: [0, 0, CHAIR.pullOutM] }))]),
   };
 }
 
@@ -228,6 +261,77 @@ function computerParts(surfaceY: number): MeshPart[] {
       center: [spec.mouseCenterXM, surfaceY + spec.mouseHeightM / 2, spec.keyboardCenterZM],
     }),
   ];
+}
+
+function chairParts(): MeshPart[] {
+  const spec = CHAIR;
+  const seatCenterZ = spec.seatFrontZM - spec.seatDepthM / 2;
+  const seatY = spec.seatHeightM - spec.seatThicknessM / 2;
+  const backZ = spec.seatFrontZM + spec.backThicknessM / 2 + 0.008;
+  const backY = spec.seatHeightM + spec.backHeightM / 2;
+  const legInsetX = spec.seatWidthM / 2 - 0.04;
+  const legInsetZ = spec.seatDepthM / 2 - 0.04;
+  const legs = [
+    [-legInsetX, -legInsetZ],
+    [legInsetX, -legInsetZ],
+    [-legInsetX, legInsetZ],
+    [legInsetX, legInsetZ],
+  ].map(([dx, dz], index) =>
+    roundedBox(`chair-leg-${index}`, "timber", {
+      width: spec.legSizeM,
+      height: spec.seatHeightM - spec.seatThicknessM,
+      depth: spec.legSizeM,
+      radius: 0.004,
+      curveSegments: 2,
+      center: [spec.centerXM + (dx ?? 0), (spec.seatHeightM - spec.seatThicknessM) / 2, seatCenterZ + (dz ?? 0)],
+    }),
+  );
+  const back = transformPart(
+    roundedBox("chair-back", "upholstery", {
+      width: spec.backWidthM,
+      height: spec.backHeightM,
+      depth: spec.backThicknessM,
+      radius: 0.006,
+      curveSegments: 2,
+    }),
+    { pitch: 0.14, pivot: [0, -spec.backHeightM / 2, 0], translate: [spec.centerXM, backY, backZ] },
+  );
+  return [
+    roundedBox("chair-seat", "upholstery", {
+      width: spec.seatWidthM,
+      height: spec.seatThicknessM,
+      depth: spec.seatDepthM,
+      radius: 0.008,
+      curveSegments: 3,
+      center: [spec.centerXM, seatY, seatCenterZ],
+    }),
+    { ...back, name: "chair-back" },
+    ...legs,
+  ];
+}
+
+function chairRecord(parts: readonly MeshPart[]): DeskModel["chair"] {
+  const names = parts.filter((part) => part.name.startsWith("chair-"));
+  const tucked = unionBounds(names);
+  const pullOut = unionBounds(names.map((part) => transformPart(part, { translate: [0, 0, CHAIR.pullOutM] })));
+  const brackets = parts.filter((part) => part.name.includes("bracket"));
+  const clears = names.every((part) => brackets.every((bracket) => !aabbOverlap(partBounds(part), partBounds(bracket))));
+  const back = names.find((part) => part.name === "chair-back");
+  const seat = names.find((part) => part.name === "chair-seat");
+  const facesDesk = !!back && !!seat && partBounds(back).min[2] >= partBounds(seat).max[2] - 0.02;
+  return {
+    facesDesk,
+    clearsBrackets: clears,
+    tucked,
+    pullOut,
+    seatHeightM: CHAIR.seatHeightM,
+    pullOutM: CHAIR.pullOutM,
+    note: CHAIR.seatNote,
+  };
+}
+
+function aabbOverlap(a: Aabb, b: Aabb): boolean {
+  return a.min[0] < b.max[0] && a.max[0] > b.min[0] && a.min[1] < b.max[1] && a.max[1] > b.min[1] && a.min[2] < b.max[2] && a.max[2] > b.min[2];
 }
 
 const COMPUTER_NAMES = [

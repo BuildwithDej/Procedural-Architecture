@@ -56,7 +56,7 @@
       "min": [
         -1.442,
         0,
-        -1.1159999999999999
+        -1.0939999999999999
       ],
       "max": [
         1.442,
@@ -119,6 +119,38 @@
       "containedOnTop": true,
       "screen": "blank-panel"
     },
+    "chair": {
+      "facesDesk": true,
+      "clearsBrackets": true,
+      "tucked": {
+        "min": [
+          0.029999999329447746,
+          0,
+          0.13500000536441803
+        ],
+        "max": [
+          0.4300000071525574,
+          0.7672877311706543,
+          0.584728479385376
+        ]
+      },
+      "pullOut": {
+        "min": [
+          0.029999999329447746,
+          0,
+          0.48500001430511475
+        ],
+        "max": [
+          0.4300000071525574,
+          0.7672877311706543,
+          0.9347285032272339
+        ]
+      },
+      "seatHeightM": 0.45,
+      "pullOutM": 0.35,
+      "note": "Seat height 0.45 m and a 0.35 m pull-out are assumptions for this chair, not a regulation."
+    },
+    "mountClearanceM": 0.002,
     "dimensionsAre": "design choices, not a regulation or a structural approval"
   },
   "wardrobeLimits": {

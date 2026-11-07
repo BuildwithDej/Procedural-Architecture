@@ -20,7 +20,7 @@ import { presets } from "../model/examples.ts";
 import { validateRoom } from "../model/parse.ts";
 import type { Room, WallId } from "../model/types.ts";
 import { buildBedroomSet } from "../library/bedroomSet.ts";
-import { FEATURE_WALL } from "../library/bedroomSet.ts";
+import { FEATURE_WALL, MOUNT_CLEARANCE_M } from "../library/bedroomSet.ts";
 import { buildDesk } from "../library/desk.ts";
 import {
   defaultFitRequest,
@@ -44,7 +44,9 @@ import { WARDROBE_THREE_BAY, WARDROBE_TWO_BAY, buildWardrobe } from "../library/
 const root = document.querySelector("#app");
 if (!root) throw new Error("Missing #app");
 
-const initialRoom = new URLSearchParams(window.location.search).get("room");
+const search = new URLSearchParams(window.location.search);
+const mountView = search.get("view") === "mount";
+const initialRoom = search.get("room");
 let request: FitRequest = defaultFitRequest(
   initialRoom === "tiny" && presets[1] ? presets[1].room : initialRoom === "example" && presets[0] ? presets[0].room : FITS_ROOM,
   "north",
@@ -204,7 +206,7 @@ function draw(result: FitResult): void {
           radius: 0,
           center: [0, panelHeight / 2, FEATURE_WALL.thicknessM / 2],
         });
-        const at = pointOnWall(room, bed.wall, center, 0);
+        const at = pointOnWall(room, bed.wall, center, -MOUNT_CLEARANCE_M);
         addParts([panel], yawForWall(bed.wall), [at.x, 0, at.z]);
       }
     }
@@ -214,19 +216,39 @@ function draw(result: FitResult): void {
   const wardrobePlace = result.placed.find((item) => item.id === "wardrobe");
   if (wardrobePlace) addParts(buildWardrobe(request.wardrobe).partsClosed, wardrobePlace.yaw, wardrobePlace.origin);
 
+  if (mountView && bed) {
+    const edge = pointOnWall(room, bed.wall, bed.alongCenterM + 1.28, -0.012);
+    const eye = pointOnWall(room, bed.wall, bed.alongCenterM + 1.7, -0.42);
+    camera.position.set(eye.x, 1.15, eye.z);
+    orbit.target.set(edge.x, 1.05, edge.z);
+    camera.left = -0.28;
+    camera.right = 0.28;
+    camera.top = 0.28;
+    camera.bottom = -0.28;
+    camera.lookAt(edge.x, 1.05, edge.z);
+    camera.updateProjectionMatrix();
+    orbit.update();
+  }
+
   const plan = projectPlan(room);
   renderPlan(svg, plan, room.name);
   for (const item of result.placed) {
-    const rect = worldToPlan(item.footprint.min[0], item.footprint.max[2]);
-    const far = worldToPlan(item.footprint.max[0], item.footprint.min[2]);
-    const node = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    node.setAttribute("class", "plan-item");
-    node.setAttribute("x", String(Math.min(rect.x, far.x)));
-    node.setAttribute("y", String(Math.min(rect.y, far.y)));
-    node.setAttribute("width", String(Math.abs(far.x - rect.x)));
-    node.setAttribute("height", String(Math.abs(far.y - rect.y)));
-    svg.append(node);
+    const boxes = item.marks?.length ? item.marks.map((mark) => mark.box) : [item.footprint];
+    for (const box of boxes) appendPlanBox(svg, box, item.id === "desk" ? "plan-chair" : "plan-item");
+    if (item.marks?.length) appendPlanBox(svg, item.footprint, "plan-item");
   }
+}
+
+function appendPlanBox(svg: SVGSVGElement, box: { min: readonly number[]; max: readonly number[] }, className: string): void {
+  const rect = worldToPlan(box.min[0] ?? 0, box.max[2] ?? 0);
+  const far = worldToPlan(box.max[0] ?? 0, box.min[2] ?? 0);
+  const node = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  node.setAttribute("class", className);
+  node.setAttribute("x", String(Math.min(rect.x, far.x)));
+  node.setAttribute("y", String(Math.min(rect.y, far.y)));
+  node.setAttribute("width", String(Math.abs(far.x - rect.x)));
+  node.setAttribute("height", String(Math.abs(far.y - rect.y)));
+  svg.append(node);
 }
 
 function field(labelText: string, value: number, onInput: (value: number) => void): HTMLLabelElement {
@@ -363,6 +385,8 @@ function renderNotes(result: FitResult): void {
   const heading = document.createElement("h2");
   heading.textContent = result.ok ? "Placed" : "Not fully placed";
   heading.className = result.ok ? "ok" : "bad";
+  const intent = document.createElement("p");
+  intent.textContent = `Desk is locked to ${request.deskWall}. Wardrobe is locked to ${request.wardrobeWall}. Opposite the bed is a sightline, not a rule, and no television is placed there.`;
   const placed = document.createElement("ul");
   for (const item of result.placed) {
     const line = document.createElement("li");
@@ -380,7 +404,7 @@ function renderNotes(result: FitResult): void {
     line.textContent = `${item.id}: ${item.reason}`;
     unmet.append(line);
   }
-  notes.append(heading, placed);
+  notes.append(heading, intent, placed);
   if (result.unplaced.length > 0) {
     const sub = document.createElement("h2");
     sub.textContent = "Unplaced";

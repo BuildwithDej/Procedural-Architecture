@@ -64,6 +64,10 @@ The desk carries one generic computer: a slim blank screen on a neck and base, a
 - If the desk or wardrobe has no free stretch, it stays unplaced and the reason is shown. The bed can still be placed.
 - Straight rectangular rooms only. No tracing, no voice, no polygon rooms, and no code-compliance claim.
 
+The desk's wall is a locked intent, defaulting to the wall opposite the bed, so a later television could share that sightline. None is modelled. The wardrobe defaults to the sitter's left of the bed (west when the bed faces north). If that wall cannot take the piece, it stays unplaced and another wall is offered only as a button. The chair's 0.45 m seat and 0.35 m pull-out are assumptions. The pull-out is part of the desk's checked volume.
+
+Feature-wall panels stand in the room. Their backs are 2 mm proud of the interior face (`MOUNT_CLEARANCE_M`), and their 20 mm thickness projects inward. The headboard band bites 8 mm into the panel face and does not enter the wall solid. The same gap is used for the desk and wardrobe backs. Flush contact between the headboard and the panel is intentional. The room wall is not hidden and depth testing is unchanged.
+
 ## Presentation
 
 Dej selected the dark workspace for milestone 1.

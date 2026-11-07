@@ -179,6 +179,11 @@ describe("desk", () => {
     expect(model.parts.some((part) => part.name === "computer-screen")).toBe(true);
     expect(model.parts.some((part) => part.name === "computer-keyboard")).toBe(true);
     expect(model.parts.some((part) => part.name === "computer-mouse")).toBe(true);
+    expect(model.chair.facesDesk).toBe(true);
+    expect(model.chair.clearsBrackets).toBe(true);
+    expect(model.chair.seatHeightM).toBe(0.45);
+    expect(model.chair.pullOut.max[2]).toBeGreaterThan(model.chair.tucked.max[2]);
+    expect(model.useBounds.max[2]).toBeGreaterThan(DESK_SPEC.topDepthM);
   });
 });
 

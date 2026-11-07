@@ -288,7 +288,7 @@ function show(): void {
   } else if (selected === "desk") {
     frameParts(desk.parts);
     caption.textContent =
-      "Wall-mounted oak top, 1.20 × 0.52 × 0.032 m, surface at 0.74 m. Three pale brackets are the supports. Structural fixing is not assessed. The cable groove and the sizes are design choices, not a regulation.";
+      "Wall-mounted oak top, 1.20 × 0.52 × 0.032 m, surface at 0.74 m, with a blank computer and a chair in the right-hand knee gap. Seat height 0.45 m and the 0.35 m pull-out are assumptions, not a regulation. Brackets carry the top. Fixing is not assessed.";
   } else {
     const model = currentWardrobe();
     frameParts(doorsOpen() ? model.partsOpen : model.partsClosed);

@@ -11,13 +11,17 @@ import {
   type BedLayout,
 } from "./bedroomSet.ts";
 import { buildDesk, DESK_SPEC } from "./desk.ts";
+import { MOUNT_CLEARANCE_M } from "./bedroomSet.ts";
 import type { MattressSizeId } from "./mattressSizes.ts";
 import { decideWardrobe, WARDROBE_THREE_BAY, type WardrobeModel, type WardrobeRequest } from "./wardrobe.ts";
 
 const WALLS: readonly WallId[] = ["north", "east", "south", "west"];
-/** Later pieces prefer the west wall, which stays full height in the standard south-east view. */
-const LATER_WALLS: readonly WallId[] = ["west", "south", "east", "north"];
 const END_MARGIN_M = 0.05;
+
+/** A wall named from the bed, so it follows the bed when the bed wall changes. */
+export type RelativeWall = "opposite-bed" | "left-of-bed" | "right-of-bed";
+
+export type WallIntent = WallId | RelativeWall;
 
 export interface FitRequest {
   room: Room;
@@ -25,6 +29,10 @@ export interface FitRequest {
   mattressId: MattressSizeId;
   panelling: "bedSurround" | "fullWall";
   wardrobe: WardrobeRequest;
+  /** Locked preference. Opposite the bed is the sightline. A television could use it later; none is added here. */
+  deskWall: WallIntent;
+  /** Locked preference. Left is the sitter's left when facing the bed. */
+  wardrobeWall: WallIntent;
 }
 
 export interface Placement {
@@ -34,6 +42,8 @@ export interface Placement {
   yaw: number;
   origin: [number, number, number];
   footprint: Aabb;
+  /** Extra plan marks, such as the chair pulled out. Same coordinates as the footprint. */
+  marks?: Array<{ id: string; box: Aabb }>;
 }
 
 export interface FitAlternative {
@@ -69,6 +79,44 @@ export function yawForWall(wall: WallId): number {
     case "west":
       return Math.PI / 2;
   }
+}
+
+export function oppositeWall(wall: WallId): WallId {
+  switch (wall) {
+    case "north":
+      return "south";
+    case "south":
+      return "north";
+    case "east":
+      return "west";
+    case "west":
+      return "east";
+  }
+}
+
+/** Sitter's left when looking at the bed wall from inside the room. */
+export function leftOfBed(wall: WallId): WallId {
+  switch (wall) {
+    case "north":
+      return "west";
+    case "west":
+      return "south";
+    case "south":
+      return "east";
+    case "east":
+      return "north";
+  }
+}
+
+export function rightOfBed(wall: WallId): WallId {
+  return oppositeWall(leftOfBed(wall));
+}
+
+export function resolveWall(bedWall: WallId, intent: WallIntent): WallId {
+  if (intent === "opposite-bed") return oppositeWall(bedWall);
+  if (intent === "left-of-bed") return leftOfBed(bedWall);
+  if (intent === "right-of-bed") return rightOfBed(bedWall);
+  return intent;
 }
 
 export function wallLength(room: Room, wall: WallId): number {
@@ -228,7 +276,10 @@ export function fitFurniture(request: FitRequest, options: { alternatives?: bool
     return finish(request, placed, unplaced, conflicts, withAlternatives);
   }
 
-  const deskTry = tryAgainstWalls(room, "desk", DESK_SPEC.topWidthM, desk.visualBounds, obstacles, 1.15);
+  const deskWall = resolveWall(request.bedWall, request.deskWall);
+  const bedCenter = placed[0]?.alongCenterM ?? wallLength(room, request.bedWall) / 2;
+  const align = sharesAlong(request.bedWall, deskWall) ? bedCenter : null;
+  const deskTry = placeDirected(room, "desk", deskWall, DESK_SPEC.topWidthM, desk.useBounds, obstacles, 1.2, align, desk);
   if (deskTry.placement) {
     placed.push(deskTry.placement);
     obstacles.push({ id: "desk", box: deskTry.placement.footprint });
@@ -237,7 +288,7 @@ export function fitFurniture(request: FitRequest, options: { alternatives?: bool
     conflicts.push(deskTry.reason);
   }
 
-  const wardrobeTry = tryWardrobe(room, wardrobe, obstacles);
+  const wardrobeTry = tryWardrobe(room, wardrobe, obstacles, resolveWall(request.bedWall, request.wardrobeWall));
   if (wardrobeTry.placement) placed.push(wardrobeTry.placement);
   else {
     unplaced.push({ id: "wardrobe", reason: wardrobeTry.reason });
@@ -255,7 +306,9 @@ function finish(
   withAlternatives: boolean,
 ): FitResult {
   const bedPlaced = placed.some((item) => item.id === "bed");
-  const alternatives = withAlternatives && !bedPlaced ? bedWallAlternatives(request) : [];
+  const alternatives = withAlternatives
+    ? [...(bedPlaced ? [] : bedWallAlternatives(request)), ...pieceAlternatives(request, unplaced)]
+    : [];
   return {
     ok: bedPlaced && conflicts.length === 0 && unplaced.length === 0,
     placed,
@@ -265,6 +318,40 @@ function finish(
     mattressId: request.mattressId,
     panelling: request.panelling,
   };
+}
+
+function pieceAlternatives(request: FitRequest, unplaced: FitResult["unplaced"]): FitAlternative[] {
+  const alternatives: FitAlternative[] = [];
+  const missing = new Set(unplaced.map((item) => item.id));
+  if (missing.has("desk")) {
+    const asked = resolveWall(request.bedWall, request.deskWall);
+    for (const wall of WALLS) {
+      if (wall === asked) continue;
+      const next: FitRequest = { ...request, deskWall: wall };
+      const trial = fitFurniture(next, { alternatives: false });
+      if (!trial.placed.some((item) => item.id === "desk")) continue;
+      alternatives.push({
+        id: `desk-on-${wall}`,
+        label: `Put the desk on the ${wall} wall instead of ${asked}. The bed wall, mattress, and openings stay.`,
+        request: next,
+      });
+    }
+  }
+  if (missing.has("wardrobe")) {
+    const asked = resolveWall(request.bedWall, request.wardrobeWall);
+    for (const wall of WALLS) {
+      if (wall === asked) continue;
+      const next: FitRequest = { ...request, wardrobeWall: wall };
+      const trial = fitFurniture(next, { alternatives: false });
+      if (!trial.placed.some((item) => item.id === "wardrobe")) continue;
+      alternatives.push({
+        id: `wardrobe-on-${wall}`,
+        label: `Put the wardrobe on the ${wall} wall instead of ${asked}. The bed wall, mattress, and openings stay.`,
+        request: next,
+      });
+    }
+  }
+  return alternatives;
 }
 
 function bedWallAlternatives(request: FitRequest): FitAlternative[] {
@@ -330,7 +417,7 @@ function tryBed(
   const origin = originOnWall(room, request.bedWall, alongCenter, -layout.frameDepthM / 2);
   const footprint = mapAabb(
     {
-      min: [-along / 2, 0, -layout.frameDepthM / 2 - FEATURE_WALL.thicknessM],
+      min: [-along / 2, 0, -layout.frameDepthM / 2 + MOUNT_CLEARANCE_M],
       max: [along / 2, FEATURE_WALL.heightM, layout.frameDepthM / 2],
     },
     yaw,
@@ -405,22 +492,53 @@ function originOnWall(room: Room, wall: WallId, along: number, outward: number):
   return [point.x, 0, point.z];
 }
 
-function tryAgainstWalls(
+function sharesAlong(a: WallId, b: WallId): boolean {
+  const eastWest = (wall: WallId) => wall === "east" || wall === "west";
+  return eastWest(a) === eastWest(b);
+}
+
+function placeDirected(
   room: Room,
   id: "desk",
+  wall: WallId,
   alongSpan: number,
   localBounds: Aabb,
   obstacles: readonly Obstacle[],
   occupiedTop: number,
+  alignCenter: number | null,
+  desk: ReturnType<typeof buildDesk>,
 ): { placement: Placement | null; reason: string } {
-  for (const wall of LATER_WALLS) {
-    const found = placeOnWall(room, id, wall, alongSpan, 0, localBounds, obstacles, occupiedTop, END_MARGIN_M);
-    if (found) return { placement: found, reason: "" };
+  const length = wallLength(room, wall);
+  const target = alignCenter ?? length / 2;
+  const start = target - alongSpan / 2;
+  const blocked = intervalBlocked(room, wall, start, start + alongSpan, occupiedTop);
+  const found = blocked
+    ? null
+    : placeOnWall(room, id, wall, alongSpan, -MOUNT_CLEARANCE_M, localBounds, obstacles, occupiedTop, END_MARGIN_M, start);
+  if (found) {
+    const tucked = mapAabb(desk.chair.tucked, found.yaw, found.origin);
+    const pull = mapAabb(desk.chair.pullOut, found.yaw, found.origin);
+    return {
+      placement: { ...found, marks: [{ id: "chair", box: pull }, { id: "desk-top", box: tucked }] },
+      reason: "",
+    };
   }
-  return { placement: null, reason: `No wall has a free stretch for the ${id} without covering an opening or the bed.` };
+  const why = blocked
+    ? `the ${wall} wall opening or the end margin covers that stretch`
+    : `the chair pull-out or the desk meets the bed, a clearance, or a door swing`;
+  return {
+    placement: null,
+    reason: `The desk was asked for the ${wall} wall, directly in line with the bed when that wall is opposite. It does not fit there because ${why}. It was not moved to another wall.`,
+  };
 }
 
-function tryWardrobe(room: Room, model: WardrobeModel, obstacles: readonly Obstacle[]): { placement: Placement | null; reason: string } {
+function intervalBlocked(room: Room, wall: WallId, start: number, end: number, occupiedTop: number): boolean {
+  const length = wallLength(room, wall);
+  if (start < END_MARGIN_M - 1e-6 || end > length - END_MARGIN_M + 1e-6) return true;
+  return openingBlocks(room, wall, occupiedTop).some(([a, b]) => Math.min(end, b) - Math.max(start, a) > 0.001);
+}
+
+function tryWardrobe(room: Room, model: WardrobeModel, obstacles: readonly Obstacle[], wall: WallId): { placement: Placement | null; reason: string } {
   if (model.heightM > room.height + 1e-6) {
     return { placement: null, reason: `The wardrobe is ${model.heightM} m tall and the room is ${room.height} m. It was not squashed.` };
   }
@@ -429,11 +547,12 @@ function tryWardrobe(room: Room, model: WardrobeModel, obstacles: readonly Obsta
     min: [-model.overallWidthM / 2, 0, 0],
     max: [model.overallWidthM / 2, model.heightM, model.exteriorDepthM + sweep],
   };
-  for (const wall of LATER_WALLS) {
-    const found = placeOnWall(room, "wardrobe", wall, model.overallWidthM, 0, local, obstacles, model.heightM, END_MARGIN_M);
-    if (found) return { placement: found, reason: "" };
-  }
-  return { placement: null, reason: "No wall leaves room for the wardrobe and its open-door sweep." };
+  const found = placeOnWall(room, "wardrobe", wall, model.overallWidthM, -MOUNT_CLEARANCE_M, local, obstacles, model.heightM, END_MARGIN_M);
+  if (found) return { placement: found, reason: "" };
+  return {
+    placement: null,
+    reason: `The wardrobe was asked for the ${wall} wall. That wall has no free stretch for the carcass and the open-door sweep. It was not moved.`,
+  };
 }
 
 function placeOnWall(
@@ -446,11 +565,12 @@ function placeOnWall(
   obstacles: readonly Obstacle[],
   occupiedTop: number,
   margin: number,
+  forcedStart?: number,
 ): Placement | null {
   const length = wallLength(room, wall);
   const blocks = openingBlocks(room, wall, occupiedTop);
   const free = subtractIntervals([margin, Math.max(margin, length - margin)], blocks);
-  const slots = rankedStarts(free, alongSpan, length);
+  const slots = forcedStart === undefined ? rankedStarts(free, alongSpan, length) : [forcedStart];
   const yaw = yawForWall(wall);
   for (const start of slots) {
     const alongCenter = start + alongSpan / 2;
@@ -517,5 +637,7 @@ export function defaultFitRequest(room: Room, bedWall: WallId = "north"): FitReq
     mattressId: "queen",
     panelling: "bedSurround",
     wardrobe: WARDROBE_THREE_BAY,
+    deskWall: "opposite-bed",
+    wardrobeWall: "left-of-bed",
   };
 }

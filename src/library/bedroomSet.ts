@@ -43,7 +43,37 @@ export const FEATURE_WALL = {
   bandHeightM: 0.06,
   bandDepthM: 0.14,
   bandCenterYM: 0.92,
+  /** How far the band bites into the panel face. It stays in front of the panel back. */
+  bandBiteM: 0.008,
 } as const;
+
+/**
+ * Air gap between a mounted back and the room's interior face.
+ * The piece stands in the room. It does not enter the wall solid, and it does not share that face.
+ */
+export const MOUNT_CLEARANCE_M = 0.002;
+
+export function featureMount(wallFront: number): {
+  panelBack: number;
+  panelFront: number;
+  panelCenter: number;
+  bandBack: number;
+  bandFront: number;
+  bandCenter: number;
+} {
+  const panelBack = wallFront + MOUNT_CLEARANCE_M;
+  const panelFront = panelBack + FEATURE_WALL.thicknessM;
+  const bandBack = panelFront - FEATURE_WALL.bandBiteM;
+  const bandFront = bandBack + FEATURE_WALL.bandDepthM;
+  return {
+    panelBack,
+    panelFront,
+    panelCenter: (panelBack + panelFront) / 2,
+    bandBack,
+    bandFront,
+    bandCenter: (bandBack + bandFront) / 2,
+  };
+}
 
 export interface LightAnchor {
   id: string;
@@ -163,23 +193,25 @@ export function buildBedroomSet(sizeId: MattressSizeId = "queen"): BedroomSetMod
   parts.push(...nightstands(layout, wallFront), ...featureWall(layout, wallFront, panels.modules, panels.led.lengthM));
 
   const run = panelRunWidth(panels.modules);
+  const mount = featureMount(wallFront);
   const bedFootprint: Aabb = {
     min: [-layout.frameWidthM / 2, 0, wallFront],
     max: [layout.frameWidthM / 2, BED_FRAME.headboardBottomM + BED_FRAME.headboardHeightM, wallFront + layout.frameDepthM],
   };
   const footprint: Aabb = {
-    min: [-run / 2, 0, wallFront - FEATURE_WALL.thicknessM],
+    min: [-run / 2, 0, mount.panelBack],
     max: [run / 2, FEATURE_WALL.heightM, wallFront + layout.frameDepthM],
   };
 
   const ledY = FEATURE_WALL.bandCenterYM + FEATURE_WALL.bandHeightM / 2 + 0.01;
   const downY = FEATURE_WALL.bandCenterYM - FEATURE_WALL.bandHeightM / 2 - 0.01;
+  const mounted = featureMount(wallFront);
   const warmthHex = ledHex(panels.led.warmth);
   const lights: LightAnchor[] = [
     {
       id: "led-upwash",
-      position: [panels.led.centerM, ledY, wallFront + 0.03],
-      target: [panels.led.centerM, ledY + 1.1, wallFront],
+      position: [panels.led.centerM, ledY, mounted.panelFront + 0.01],
+      target: [panels.led.centerM, ledY + 1.1, mounted.panelBack],
       widthM: panels.led.lengthM,
       heightM: 0.045,
       hex: warmthHex,
@@ -187,7 +219,7 @@ export function buildBedroomSet(sizeId: MattressSizeId = "queen"): BedroomSetMod
     },
     {
       id: "led-downwash",
-      position: [panels.led.centerM, downY, wallFront + FEATURE_WALL.bandDepthM - 0.03],
+      position: [panels.led.centerM, downY, mounted.bandFront - 0.02],
       target: [panels.led.centerM, 0.55, 0.15],
       widthM: panels.led.lengthM * 0.92,
       heightM: 0.04,
@@ -225,7 +257,7 @@ function headboard(layout: BedLayout, wallFront: number): MeshPart[] {
   const inner = layout.frameWidthM - BED_FRAME.headboardInsetM * 2;
   const panelWidth = (inner - BED_FRAME.headboardGapM) / 2;
   const y = BED_FRAME.headboardBottomM + BED_FRAME.headboardHeightM / 2;
-  const z = wallFront + BED_FRAME.headboardThicknessM / 2;
+  const z = featureMount(wallFront).panelFront + BED_FRAME.headboardThicknessM / 2;
   const x = panelWidth / 2 + BED_FRAME.headboardGapM / 2;
   const options = {
     width: panelWidth,
@@ -243,7 +275,8 @@ function headboard(layout: BedLayout, wallFront: number): MeshPart[] {
 function nightstands(layout: BedLayout, wallFront: number): MeshPart[] {
   const x = layout.frameWidthM / 2 + NIGHTSTAND.gapFromBedM + NIGHTSTAND.widthM / 2;
   const y = NIGHTSTAND.bottomM + NIGHTSTAND.heightM / 2;
-  const z = wallFront + NIGHTSTAND.depthM / 2;
+  const mount = featureMount(wallFront);
+  const z = mount.panelFront + NIGHTSTAND.depthM / 2;
   return [-1, 1].flatMap((side) => {
     const name = side < 0 ? "left" : "right";
     const centerX = side * x;
@@ -270,7 +303,7 @@ function nightstands(layout: BedLayout, wallFront: number): MeshPart[] {
         depth: 0.016,
         radius: 0.002,
         curveSegments: 1,
-        center: [centerX, y + NIGHTSTAND.heightM / 2 - 0.03, wallFront + 0.008],
+        center: [centerX, y + NIGHTSTAND.heightM / 2 - 0.03, mount.panelFront + 0.008],
       }),
     ];
   });
@@ -282,13 +315,14 @@ function featureWall(
   modules: readonly PanelModule[],
   ledLength: number,
 ): MeshPart[] {
+  const mount = featureMount(wallFront);
   const parts = modules.map((module, index) =>
     roundedBox(`wall-panel-${index}`, "timber", {
       width: module.widthM,
       height: FEATURE_WALL.heightM,
       depth: FEATURE_WALL.thicknessM,
       radius: 0,
-      center: [module.centerM, FEATURE_WALL.heightM / 2, wallFront - FEATURE_WALL.thicknessM / 2],
+      center: [module.centerM, FEATURE_WALL.heightM / 2, mount.panelCenter],
     }),
   );
   const run = panelRunWidth(modules);
@@ -299,25 +333,21 @@ function featureWall(
       depth: FEATURE_WALL.bandDepthM,
       radius: 0.006,
       curveSegments: 2,
-      center: [0, FEATURE_WALL.bandCenterYM, wallFront + FEATURE_WALL.bandDepthM / 2 - 0.008],
+      center: [0, FEATURE_WALL.bandCenterYM, mount.bandCenter],
     }),
     roundedBox("led-up", "led", {
       width: ledLength,
       height: 0.012,
       depth: 0.016,
       radius: 0,
-      center: [0, FEATURE_WALL.bandCenterYM + FEATURE_WALL.bandHeightM / 2 + 0.008, wallFront + 0.02],
+      center: [0, FEATURE_WALL.bandCenterYM + FEATURE_WALL.bandHeightM / 2 + 0.008, mount.panelFront + 0.012],
     }),
     roundedBox("led-down", "led", {
       width: ledLength * 0.92,
       height: 0.01,
       depth: 0.014,
       radius: 0,
-      center: [
-        0,
-        FEATURE_WALL.bandCenterYM - FEATURE_WALL.bandHeightM / 2 - 0.006,
-        wallFront + FEATURE_WALL.bandDepthM - 0.03,
-      ],
+      center: [0, FEATURE_WALL.bandCenterYM - FEATURE_WALL.bandHeightM / 2 - 0.006, mount.bandFront - 0.02],
     }),
   );
   void layout;

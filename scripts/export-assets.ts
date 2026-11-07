@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { buildBedroomSet, FEATURE_WALL, PLACEHOLDER_FOOT_CLEARANCE_M, PLACEHOLDER_SIDE_CLEARANCE_M } from "../src/library/bedroomSet.ts";
+import { buildBedroomSet, FEATURE_WALL, MOUNT_CLEARANCE_M, PLACEHOLDER_FOOT_CLEARANCE_M, PLACEHOLDER_SIDE_CLEARANCE_M } from "../src/library/bedroomSet.ts";
 import { buildDesk, DESK_SPEC } from "../src/library/desk.ts";
 import { encodeGlb } from "../src/library/glb.ts";
 import { MATTRESS_SIZES, PREVIEW_MATTRESS_ID } from "../src/library/mattressSizes.ts";
@@ -57,6 +57,8 @@ const metadata = {
     mount: desk.mount,
     knee: desk.knee,
     computer: desk.computer,
+    chair: desk.chair,
+    mountClearanceM: MOUNT_CLEARANCE_M,
     dimensionsAre: "design choices, not a regulation or a structural approval",
   },
   wardrobeLimits: WARDROBE_LIMITS,

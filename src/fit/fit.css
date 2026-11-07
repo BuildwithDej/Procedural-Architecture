@@ -78,6 +78,7 @@ h1, h2 { font-size: 14px; font-weight: 520; margin: 0 0 10px; }
 .plan-dim, .plan-north { stroke: #b7b7be; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .plan-label, .plan-north-label { fill: #f3f3f5; font-family: var(--sans); }
 .plan-item { fill: rgba(212, 176, 140, 0.85); stroke: #f4efe8; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.plan-chair { fill: rgba(236, 231, 224, 0.9); stroke: #f4efe8; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .plan-clear { fill: none; stroke: #e4a39c; stroke-dasharray: 4 3; stroke-width: 1; vector-effect: non-scaling-stroke; }
 
 @media (max-width: 980px) {
