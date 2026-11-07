@@ -401,6 +401,77 @@ describe("hollow form", () => {
     }
   });
 
+  function upwardArea(mesh: MeshData): number {
+    let area = 0;
+    for (let i = 0; i < mesh.indices.length; i += 3) {
+      const read = (index: number) => {
+        const vertex = mesh.indices[index] ?? 0;
+        return {
+          x: mesh.positions[vertex * 3] ?? 0,
+          y: mesh.positions[vertex * 3 + 1] ?? 0,
+          z: mesh.positions[vertex * 3 + 2] ?? 0,
+        };
+      };
+      const a = read(i);
+      const b = read(i + 1);
+      const c = read(i + 2);
+      const ny = (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z);
+      if (ny <= 0) continue;
+      area += Math.abs((b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z)) / 2;
+    }
+    return area;
+  }
+
+  function expectClosedEnvelope(name: string, floors: number, controls: { coverage: number; setback: number; twistDeg: number; organic: number }): void {
+    const result = generateForm({
+      boundary: FORM_PRESETS.notch ?? [],
+      floors,
+      seed: 4,
+      controls,
+    });
+    expect(result.ok, name).toBe(true);
+    if (!result.ok) return;
+    expect(formContainmentIssues(result.form), name).toEqual([]);
+    const geometry = buildFormGeometry(result.form);
+    result.form.floors.forEach((floor, index) => {
+      const solid = geometry[index];
+      if (!solid) throw new Error(name);
+      const outerArea = polygonArea(floor.outer);
+      const slabArea = upwardArea(solid.slab);
+      expect(Math.abs(slabArea - outerArea) / outerArea, `${name} slab`).toBeLessThan(0.03);
+      if (floor.cap.role !== "covered") {
+        expect(solid.cap, `${name} cap exists`).not.toBeNull();
+        const holeArea = floor.cap.hole ? polygonArea(floor.cap.hole) : 0;
+        const expected = outerArea - holeArea;
+        const capArea = solid.cap ? upwardArea(solid.cap) : 0;
+        expect(Math.abs(capArea - expected) / Math.max(expected, 1e-6), `${name} ${floor.id} cap`).toBeLessThan(0.04);
+      }
+      const heights: number[] = [];
+      for (const wall of solid.walls) {
+        for (let i = 1; i < wall.mesh.positions.length; i += 3) heights.push(wall.mesh.positions[i] ?? 0);
+      }
+      const low = Math.min(...heights);
+      const high = Math.max(...heights);
+      expect(low, `${name} wall meets slab`).toBeLessThanOrEqual(floor.elevationM + floor.slabThicknessM);
+      const joint = floor.cap.elevationM;
+      expect(high, `${name} wall meets cap`).toBeGreaterThanOrEqual(joint - 0.02);
+    });
+  }
+
+  it("closes the exterior on the reported notch views and the other shell combinations", () => {
+    const reported = { setback: 0.4, twistDeg: 0, organic: 0 } as const;
+    expectClosedEnvelope("notch default 3", 3, { coverage: 0.34, ...reported });
+    expectClosedEnvelope("notch full 3", 3, { coverage: 1, ...reported });
+    for (const floors of [1, 3, 5]) {
+      expectClosedEnvelope(`notch ${floors} default`, floors, { coverage: 0.34, setback: 0.45, twistDeg: 0, organic: 0 });
+      expectClosedEnvelope(`notch ${floors} full`, floors, { coverage: 1, setback: 0.45, twistDeg: 0, organic: 0 });
+    }
+    expectClosedEnvelope("no setback", 5, { coverage: 0.34, setback: 0, twistDeg: 0, organic: 0 });
+    expectClosedEnvelope("organic full", 3, { coverage: 1, setback: 0.4, twistDeg: 0, organic: 1 });
+    expectClosedEnvelope("twist", 3, { coverage: 0.5, setback: 0.35, twistDeg: 12, organic: 0 });
+    expectClosedEnvelope("rounded twist", 5, { coverage: 0.7, setback: 0.3, twistDeg: -10, organic: 1 });
+  });
+
   it("keeps extreme slider combinations inside a concave site", () => {
     const notch = FORM_PRESETS.notch ?? [];
     for (const coverage of [FORM_CONTROLS.coverageMin, FORM_CONTROLS.coverageMax]) {
@@ -423,7 +494,7 @@ describe("hollow form", () => {
         }
       }
     }
-  });
+  }, 20000);
 
   it("covers a terrace ring without filling the hole", () => {
     const outer = roundedRectangle({ x: 0, y: 0 }, 16, 10, 2, 0.4, 4);

@@ -447,74 +447,174 @@ export function roundedRectangle(
   );
 }
 
-function raySegment(origin: Vec, direction: Vec, a: Vec, b: Vec): number | null {
-  const sx = b.x - a.x;
-  const sy = b.y - a.y;
-  const den = direction.x * sy - direction.y * sx;
-  if (Math.abs(den) < 1e-12) return null;
-  const ox = a.x - origin.x;
-  const oy = a.y - origin.y;
-  const t = (ox * sy - oy * sx) / den;
-  const u = (ox * direction.y - oy * direction.x) / den;
-  if (t > 1e-7 && u >= -1e-5 && u <= 1 + 1e-5) return t;
-  return null;
+interface RingEdge {
+  a: Vec;
+  b: Vec;
 }
 
-function rayHit(origin: Vec, angle: number, poly: readonly Vec[]): Vec | null {
-  const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-  let best = Infinity;
-  let point: Vec | null = null;
+interface RingSpan {
+  left: RingEdge;
+  right: RingEdge;
+}
+
+function xOnEdge(edge: RingEdge, y: number): number {
+  return edge.a.x + ((y - edge.a.y) * (edge.b.x - edge.a.x)) / (edge.b.y - edge.a.y);
+}
+
+/** Inside intervals of a horizontal line through a simple polygon. Null when the hit count is odd. */
+function ringSpans(poly: readonly Vec[], y: number): RingSpan[] | null {
+  const hits: { x: number; edge: RingEdge }[] = [];
   for (let i = 0; i < poly.length; i += 1) {
     const a = poly[i];
     const b = poly[(i + 1) % poly.length];
-    if (!a || !b) continue;
-    const t = raySegment(origin, direction, a, b);
-    if (t !== null && t < best) {
-      best = t;
-      point = { x: origin.x + direction.x * t, y: origin.y + direction.y * t };
-    }
+    if (!a || !b || (a.y > y) === (b.y > y)) continue;
+    hits.push({ x: xOnEdge({ a, b }, y), edge: { a, b } });
   }
-  return point;
+  hits.sort((left, right) => left.x - right.x);
+  if (hits.length % 2 !== 0) return null;
+  const spans: RingSpan[] = [];
+  for (let i = 0; i < hits.length; i += 2) {
+    const left = hits[i];
+    const right = hits[i + 1];
+    if (!left || !right || right.x - left.x < 1e-8) continue;
+    spans.push({ left: left.edge, right: right.edge });
+  }
+  return spans;
+}
+
+/** Remove hole intervals from outer intervals, keeping the edges that bound each remaining piece. */
+function subtractSpans(outer: readonly RingSpan[], hole: readonly RingSpan[], y: number): RingSpan[] {
+  const result: RingSpan[] = [];
+  for (const span of outer) {
+    let pieces: RingSpan[] = [span];
+    for (const opening of hole) {
+      const cutLeft = xOnEdge(opening.left, y);
+      const cutRight = xOnEdge(opening.right, y);
+      const next: RingSpan[] = [];
+      for (const piece of pieces) {
+        const left = xOnEdge(piece.left, y);
+        const right = xOnEdge(piece.right, y);
+        if (cutRight <= left + 1e-8 || cutLeft >= right - 1e-8) {
+          next.push(piece);
+          continue;
+        }
+        if (cutLeft > left + 1e-8) next.push({ left: piece.left, right: opening.left });
+        if (cutRight < right - 1e-8) next.push({ left: opening.right, right: piece.right });
+      }
+      pieces = next;
+    }
+    result.push(...pieces);
+  }
+  return result;
+}
+
+function pushRingTriangle(triangles: Vec[][], a: Vec, b: Vec, c: Vec): void {
+  const area = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2;
+  if (area < 1e-8) return;
+  triangles.push([
+    { x: a.x, y: a.y },
+    { x: b.x, y: b.y },
+    { x: c.x, y: c.y },
+  ]);
 }
 
 /**
- * Triangles covering `outer` minus `hole`. Both must be convex, with the hole inside the outer.
- * Rays are taken from the hole's centre, so the count stays within the two outlines.
+ * Split the ring into horizontal bands between vertex heights and triangulate each trapezoid.
+ * This covers a concave or rotated hole, where pairing corners by index leaves the ring open.
  */
+function bandRing(outer: readonly Vec[], hole: readonly Vec[]): Vec[][] | null {
+  const ys: number[] = [];
+  for (const point of [...outer, ...hole]) ys.push(point.y);
+  ys.sort((left, right) => left - right);
+  const levels: number[] = [];
+  for (const y of ys) {
+    const last = levels[levels.length - 1];
+    if (last === undefined || y - last > 1e-8) levels.push(y);
+  }
+  const triangles: Vec[][] = [];
+  for (let i = 0; i < levels.length - 1; i += 1) {
+    const y0 = levels[i];
+    const y1 = levels[i + 1];
+    if (y0 === undefined || y1 === undefined) return null;
+    const y = (y0 + y1) / 2;
+    const outerSpans = ringSpans(outer, y);
+    const holeSpans = ringSpans(hole, y);
+    if (!outerSpans || !holeSpans) return null;
+    for (const span of subtractSpans(outerSpans, holeSpans, y)) {
+      const bottomLeft = { x: xOnEdge(span.left, y0), y: y0 };
+      const bottomRight = { x: xOnEdge(span.right, y0), y: y0 };
+      const topLeft = { x: xOnEdge(span.left, y1), y: y1 };
+      const topRight = { x: xOnEdge(span.right, y1), y: y1 };
+      pushRingTriangle(triangles, bottomLeft, bottomRight, topRight);
+      pushRingTriangle(triangles, bottomLeft, topRight, topLeft);
+    }
+  }
+  let area = 0;
+  for (const triangle of triangles) {
+    const [a, b, c] = triangle;
+    if (!a || !b || !c) continue;
+    area += Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2;
+    const mid = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
+    if (!pointInPolygon(mid, outer, true) || pointInPolygon(mid, hole, false)) return null;
+  }
+  const expected = polygonArea(outer) - polygonArea(hole);
+  if (!(expected > 1e-4) || Math.abs(area - expected) / expected > 0.02) return null;
+  return triangles;
+}
+
+/**
+ * Triangles covering `outer` minus `hole`. Index-aligned plates are paired corner to corner.
+ * Anything rotated or rounded falls through to horizontal bands. A centre-ray fan is not used.
+ */
+function pairedRing(outer: readonly Vec[], hole: readonly Vec[]): Vec[][] | null {
+  if (outer.length !== hole.length || outer.length < 3) return null;
+  const shell = ensureCCW(outer);
+  const opening = ensureCCW(hole);
+  const triangles: Vec[][] = [];
+  let area = 0;
+  for (let i = 0; i < shell.length; i += 1) {
+    const a = shell[i];
+    const b = shell[(i + 1) % shell.length];
+    const c = opening[(i + 1) % opening.length];
+    const d = opening[i];
+    if (!a || !b || !c || !d) return null;
+    if (segmentsCross(a, b, c, d) || segmentsCross(a, d, b, c)) return null;
+    const parts = [
+      [a, b, c],
+      [a, c, d],
+    ];
+    for (const part of parts) {
+      const [p, q, r] = part;
+      if (!p || !q || !r) return null;
+      const piece = Math.abs((q.x - p.x) * (r.y - p.y) - (r.x - p.x) * (q.y - p.y)) / 2;
+      if (piece < 1e-8) continue;
+      const mid = { x: (p.x + q.x + r.x) / 3, y: (p.y + q.y + r.y) / 3 };
+      if (!pointInPolygon(mid, shell, true) || pointInPolygon(mid, opening, false)) return null;
+      area += piece;
+      triangles.push([
+        { x: p.x, y: p.y },
+        { x: q.x, y: q.y },
+        { x: r.x, y: r.y },
+      ]);
+    }
+  }
+  const expected = polygonArea(shell) - polygonArea(opening);
+  if (!(expected > 1e-4) || Math.abs(area - expected) / expected > 0.02) return null;
+  return triangles;
+}
+
 export function triangulateRing(outer: readonly Vec[], hole: readonly Vec[]): Vec[][] | null {
+  if (outer.length === hole.length) {
+    for (let shift = 0; shift < hole.length; shift += 1) {
+      const turned = hole.map((_, index) => hole[(index + shift) % hole.length]).filter((point): point is Vec => point !== undefined);
+      const paired = pairedRing(outer, turned);
+      if (paired) return paired;
+    }
+  }
   const shell = ensureCCW(outer);
   const opening = ensureCCW(hole);
   if (shell.length < 3 || opening.length < 3 || !polygonInside(opening, shell)) return null;
-  const origin = opening.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
-  origin.x /= opening.length;
-  origin.y /= opening.length;
-  if (!pointInPolygon(origin, opening, true)) return null;
-  const angles: number[] = [];
-  for (const point of [...shell, ...opening]) {
-    angles.push(Math.atan2(point.y - origin.y, point.x - origin.x));
-  }
-  angles.sort((left, right) => left - right);
-  const unique: number[] = [];
-  for (const angle of angles) {
-    const last = unique[unique.length - 1];
-    if (last === undefined || Math.abs(angle - last) > 1e-4) unique.push(angle);
-  }
-  if (unique.length < 3) return null;
-  const triangles: Vec[][] = [];
-  for (let i = 0; i < unique.length; i += 1) {
-    const start = unique[i];
-    const end = unique[(i + 1) % unique.length];
-    if (start === undefined || end === undefined) continue;
-    const outerStart = rayHit(origin, start, shell);
-    const outerEnd = rayHit(origin, end, shell);
-    const holeStart = rayHit(origin, start, opening);
-    const holeEnd = rayHit(origin, end, opening);
-    if (!outerStart || !outerEnd || !holeStart || !holeEnd) return null;
-    const span = Math.hypot(outerStart.x - outerEnd.x, outerStart.y - outerEnd.y);
-    if (span < 1e-4) continue;
-    triangles.push([outerStart, outerEnd, holeEnd], [outerStart, holeEnd, holeStart]);
-  }
-  return triangles.length > 0 ? triangles : null;
+  return bandRing(shell, opening);
 }
 
 export function triangulationCovers(poly: readonly Vec[]): boolean {
@@ -528,7 +628,9 @@ function pointInTriangle(point: Vec, a: Vec, b: Vec, c: Vec): boolean {
   const ca = orient(c, a, point);
   const hasNeg = ab < -1e-8 || bc < -1e-8 || ca < -1e-8;
   const hasPos = ab > 1e-8 || bc > 1e-8 || ca > 1e-8;
-  return !(hasNeg && hasPos);
+  // On an edge, or a degenerate query, does not block an ear.
+  if (hasNeg === hasPos) return false;
+  return true;
 }
 
 /** Outward unit normal of a CCW edge from `a` to `b`. */

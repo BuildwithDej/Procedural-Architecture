@@ -35,11 +35,15 @@ function pushVertex(mesh: MeshData, x: number, y: number, z: number, nx: number,
 
 function addTriangle(mesh: MeshData, a: Vec, b: Vec, c: Vec, y: number, normalY: number): void {
   const ny = normalY >= 0 ? 1 : -1;
+  const signed = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
+  if (Math.abs(signed) < 1e-8) return;
   const ia = pushVertex(mesh, a.x, y, a.y, 0, ny, 0);
   const ib = pushVertex(mesh, b.x, y, b.y, 0, ny, 0);
   const ic = pushVertex(mesh, c.x, y, c.y, 0, ny, 0);
-  // A plan-CCW triangle has a downward geometric normal in this XZ mapping, so the upward face is reversed.
-  if (ny > 0) mesh.indices.push(ia, ic, ib);
+  // Plan-CCW maps to a downward normal. Face the triangle by its actual order, not an assumed one.
+  const ccw = signed > 0;
+  const reverse = ny > 0 ? ccw : !ccw;
+  if (reverse) mesh.indices.push(ia, ic, ib);
   else mesh.indices.push(ia, ib, ic);
 }
 
@@ -167,7 +171,9 @@ function capSolid(cap: LevelCap): MeshData | null {
 function floorGeometry(floor: FloorShell): FloorGeometry {
   const ySlabBottom = floor.elevationM;
   const ySlabTop = floor.elevationM + floor.slabThicknessM;
-  const yWallTop = floor.cap.elevationM - 0.02;
+  // A repeated plate is closed by the next slab, so the wall runs into that slab.
+  // A roof or terrace cap is the visible top, and the wall stops inside the cap.
+  const yWallTop = floor.cap.role === "covered" ? floor.cap.elevationM + 0.012 : floor.cap.elevationM - 0.008;
   const walls: WallMesh[] = [];
   for (let i = 0; i < floor.outer.length; i += 1) {
     const outerA = floor.outer[i];
@@ -175,12 +181,12 @@ function floorGeometry(floor: FloorShell): FloorGeometry {
     const innerA = floor.interior[i];
     const innerB = floor.interior[(i + 1) % floor.interior.length];
     if (!outerA || !outerB || !innerA || !innerB) continue;
-    const wall = wallEdgeMesh(outerA, outerB, innerB, innerA, ySlabTop - 0.01, yWallTop);
+    const wall = wallEdgeMesh(outerA, outerB, innerB, innerA, ySlabTop - 0.02, yWallTop);
     if (wall) walls.push(wall);
   }
   return {
     id: floor.id,
-    slab: capMesh(floor.interior, ySlabBottom, ySlabTop),
+    slab: capMesh(floor.outer, ySlabBottom, ySlabTop),
     walls,
     cap: capSolid(floor.cap),
     capRole: floor.cap.role,
