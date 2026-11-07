@@ -1,6 +1,6 @@
 import "./form.css";
 import {
-  ACESFilmicToneMapping,
+  AmbientLight,
   BufferGeometry,
   Color,
   DirectionalLight,
@@ -11,6 +11,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  NeutralToneMapping,
   OrthographicCamera,
   PCFShadowMap,
   PlaneGeometry,
@@ -29,6 +30,7 @@ import {
   type BuildingForm,
 } from "./generate.ts";
 import { FORM_PRESETS } from "./presets.ts";
+import { fitOrthographic, type Vec3 } from "./frame.ts";
 import { polygonArea, type Vec } from "./polygon.ts";
 import { buildFormGeometry, type MeshData } from "./shell.ts";
 
@@ -403,9 +405,9 @@ function renderIsolate(form: BuildingForm | null): void {
 
 const renderer = new WebGLRenderer({ canvas: viewCanvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setClearColor(new Color("#1a1b1f"));
-renderer.toneMapping = ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.setClearColor(new Color("#e4e1da"));
+renderer.toneMapping = NeutralToneMapping;
+renderer.toneMappingExposure = 1;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
 
@@ -417,21 +419,21 @@ controls.target.set(8, 4, 8);
 controls.enableDamping = true;
 controls.update();
 
-scene.add(new HemisphereLight("#f4efe6", "#2a2622", 0.72));
-const sun = new DirectionalLight("#fff4e8", 1.35);
-sun.position.set(18, 28, 12);
+scene.add(new AmbientLight("#f4f1ea", 0.55));
+scene.add(new HemisphereLight("#f7f5f0", "#d5d0c6", 0.65));
+const sun = new DirectionalLight("#fffaf3", 1.15);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.left = -40;
-sun.shadow.camera.right = 40;
-sun.shadow.camera.top = 40;
-sun.shadow.camera.bottom = -40;
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 80;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.04;
 scene.add(sun);
+scene.add(sun.target);
+const fill = new DirectionalLight("#f3f6fb", 0.85);
+scene.add(fill);
+scene.add(fill.target);
 const ground = new Mesh(
-  new PlaneGeometry(400, 400),
-  new MeshStandardMaterial({ color: "#1c1b1a", roughness: 1 }),
+  new PlaneGeometry(800, 800),
+  new MeshStandardMaterial({ color: "#e7e4dc", roughness: 1 }),
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
@@ -440,8 +442,8 @@ scene.add(ground);
 const building = new Group();
 scene.add(building);
 
-const STONE = ["#e4d9cb", "#d2c4b2", "#c0b09b", "#ad9b86", "#97856f"];
-const SLABS = ["#f3eadf", "#e6d8c8", "#d7c6b3", "#c6b29d", "#b49e88"];
+const STONE = ["#f4f1ea", "#e8e3da", "#f7f4ee", "#ebe6dd", "#f1ece4"];
+const SLABS = ["#fbf9f4", "#f3eee6", "#faf6f1", "#efe9e0", "#f6f1ea"];
 
 interface FloorTag {
   kind: "slab" | "wall" | "roof";
@@ -495,19 +497,19 @@ function showForm(form: BuildingForm): void {
   for (const point of form.site) outline.push(point.x, 0.05, point.y);
   const outlineGeometry = new BufferGeometry();
   outlineGeometry.setAttribute("position", new Float32BufferAttribute(outline, 3));
-  const loop = new LineLoop(outlineGeometry, new MeshBasicMaterial({ color: "#e7d7c4" }));
+  const loop = new LineLoop(outlineGeometry, new MeshBasicMaterial({ color: "#5c584f" }));
   building.add(loop);
 
   const geometry = buildFormGeometry(form);
   geometry.forEach((floor, index) => {
     const wallMaterial = new MeshStandardMaterial({
       color: STONE[index % STONE.length],
-      roughness: 0.86,
+      roughness: 0.72,
       metalness: 0,
     });
     const slabMaterial = new MeshStandardMaterial({
       color: SLABS[index % SLABS.length],
-      roughness: 0.9,
+      roughness: 0.8,
       metalness: 0,
     });
     building.add(meshFrom(floor.slab, slabMaterial, { kind: "slab", floor: index, south: false }));
@@ -517,12 +519,12 @@ function showForm(form: BuildingForm): void {
       );
     }
     if (floor.roof) {
-      const roofMaterial = new MeshStandardMaterial({ color: "#8d8072", roughness: 0.88, metalness: 0 });
+      const roofMaterial = new MeshStandardMaterial({ color: "#ddd8ce", roughness: 0.78, metalness: 0 });
       building.add(meshFrom(floor.roof, roofMaterial, { kind: "roof", floor: index, south: false }));
     }
   });
   applyVisibility();
-  frameCamera(form);
+  frameCamera(form, false);
   renderIsolate(form);
 }
 
@@ -541,7 +543,24 @@ function applyVisibility(): void {
   }
 }
 
-function frameCamera(form: BuildingForm): void {
+function enclosurePoints(form: BuildingForm): Vec3[] {
+  const top = form.roof.elevationM + form.roof.thicknessM;
+  const points: Vec3[] = [];
+  for (const point of form.site) {
+    points.push({ x: point.x, y: 0, z: point.y });
+    points.push({ x: point.x, y: top, z: point.y });
+  }
+  for (const floor of form.floors) {
+    const crown = floor.elevationM + floor.heightM;
+    for (const point of floor.outer) {
+      points.push({ x: point.x, y: floor.elevationM, z: point.y });
+      points.push({ x: point.x, y: crown, z: point.y });
+    }
+  }
+  return points;
+}
+
+function siteSpan(form: BuildingForm): { centerX: number; centerZ: number; span: number; top: number } {
   let minX = Infinity;
   let maxX = -Infinity;
   let minZ = Infinity;
@@ -552,53 +571,105 @@ function frameCamera(form: BuildingForm): void {
     minZ = Math.min(minZ, point.y);
     maxZ = Math.max(maxZ, point.y);
   }
-  const cx = (minX + maxX) / 2;
-  const cz = (minZ + maxZ) / 2;
-  const span = Math.max(maxX - minX, maxZ - minZ, 8);
-  const height = form.floorCount * FORM_DESIGN.floorHeightM;
-  const aspect = (viewCanvas.clientWidth || 800) / Math.max(1, viewCanvas.clientHeight || 600);
-  const frustum = span * 0.78;
-  camera.left = (-frustum * aspect) / 2;
-  camera.right = (frustum * aspect) / 2;
-  camera.top = frustum / 2;
-  camera.bottom = -frustum / 2;
-  camera.near = 0.1;
-  camera.far = span * 30;
+  return {
+    centerX: (minX + maxX) / 2,
+    centerZ: (minZ + maxZ) / 2,
+    span: Math.max(maxX - minX, maxZ - minZ, 4),
+    top: form.roof.elevationM + form.roof.thicknessM,
+  };
+}
+
+function canonicalView(form: BuildingForm): { eye: Vec3; target: Vec3; up: Vec3; mirrorX: boolean } {
+  const { centerX, centerZ, span, top } = siteSpan(form);
   if (viewMode === "top") {
-    camera.up.set(0, 0, 1);
-    camera.position.set(cx, height + span * 3, cz);
-    controls.target.set(cx, 0, cz);
-    controls.enableRotate = false;
-    northTag.hidden = false;
-  } else {
-    camera.up.set(0, 1, 0);
-    camera.position.set(cx + span * 0.85, height * 0.62 + span * 0.28, cz + span * 1.05);
-    controls.target.set(cx, height * 0.28, cz);
-    controls.enableRotate = true;
-    northTag.hidden = true;
+    return {
+      eye: { x: centerX, y: top + span * 2, z: centerZ },
+      target: { x: centerX, y: 0, z: centerZ },
+      up: { x: 0, y: 0, z: 1 },
+      mirrorX: true,
+    };
   }
+  return {
+    eye: { x: centerX + span * 0.9, y: top * 0.55 + span * 0.45, z: centerZ + span * 1.15 },
+    target: { x: centerX, y: top * 0.42, z: centerZ },
+    up: { x: 0, y: 1, z: 0 },
+    mirrorX: false,
+  };
+}
+
+function viewAspect(): number {
+  const width = viewCanvas.clientWidth || viewCanvas.getBoundingClientRect().width;
+  const height = viewCanvas.clientHeight || viewCanvas.getBoundingClientRect().height;
+  if (width < 2 || height < 2) return 1;
+  return width / height;
+}
+
+function applyFrame(form: BuildingForm, eye: Vec3, target: Vec3, up: Vec3, mirrorX: boolean): void {
+  const fit = fitOrthographic(eye, target, up, enclosurePoints(form), viewAspect(), 1.16, mirrorX);
+  camera.up.set(up.x, up.y, up.z);
+  camera.position.set(fit.eye.x, fit.eye.y, fit.eye.z);
+  camera.lookAt(fit.target.x, fit.target.y, fit.target.z);
+  camera.left = fit.left;
+  camera.right = fit.right;
+  camera.top = fit.top;
+  camera.bottom = fit.bottom;
+  camera.near = fit.near;
+  camera.far = fit.far;
+  camera.zoom = 1;
   camera.updateProjectionMatrix();
+  controls.target.set(fit.target.x, fit.target.y, fit.target.z);
+  controls.enableRotate = viewMode === "model";
   controls.update();
+
+  const { centerX, centerZ, span, top } = siteSpan(form);
+  const shadow = span * 1.4;
+  sun.position.set(centerX + span * 0.7, top + span, centerZ + span * 0.85);
+  sun.target.position.set(centerX, top * 0.35, centerZ);
+  sun.shadow.camera.left = -shadow;
+  sun.shadow.camera.right = shadow;
+  sun.shadow.camera.top = shadow;
+  sun.shadow.camera.bottom = -shadow;
+  sun.shadow.camera.near = 0.5;
+  sun.shadow.camera.far = span * 6;
+  sun.shadow.camera.updateProjectionMatrix();
+  fill.position.set(centerX, top * 0.55, centerZ - span * 1.3);
+  fill.target.position.set(centerX, top * 0.4, centerZ);
+  northTag.hidden = viewMode !== "top";
   const modelButton = document.querySelector("#view-model");
   const topButton = document.querySelector("#view-top");
   if (modelButton instanceof HTMLButtonElement) modelButton.setAttribute("aria-pressed", viewMode === "model" ? "true" : "false");
   if (topButton instanceof HTMLButtonElement) topButton.setAttribute("aria-pressed", viewMode === "top" ? "true" : "false");
 }
 
+function frameCamera(form: BuildingForm, keepDirection: boolean): void {
+  if (keepDirection && camera.position.distanceTo(controls.target) > 0.5) {
+    applyFrame(
+      form,
+      { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+      { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+      { x: camera.up.x, y: camera.up.y, z: camera.up.z },
+      viewMode === "top",
+    );
+    return;
+  }
+  const view = canonicalView(form);
+  applyFrame(form, view.eye, view.target, view.up, view.mirrorX);
+}
+
 document.querySelector("#view-model")?.addEventListener("click", () => {
   viewMode = "model";
-  if (currentForm) frameCamera(currentForm);
+  if (currentForm) frameCamera(currentForm, false);
 });
 document.querySelector("#view-top")?.addEventListener("click", () => {
   viewMode = "top";
-  if (currentForm) frameCamera(currentForm);
+  if (currentForm) frameCamera(currentForm, false);
 });
 
 function resize(): void {
-  const width = viewCanvas.clientWidth || 800;
-  const height = viewCanvas.clientHeight || 600;
+  const width = viewCanvas.clientWidth || viewCanvas.getBoundingClientRect().width || 1;
+  const height = viewCanvas.clientHeight || viewCanvas.getBoundingClientRect().height || 1;
   renderer.setSize(width, height, false);
-  if (currentForm) frameCamera(currentForm);
+  if (currentForm) frameCamera(currentForm, true);
   drawBoard();
 }
 
@@ -681,6 +752,8 @@ if (params.get("open") === "0" && openSouth instanceof HTMLInputElement) openSou
 if (params.get("view") === "top") viewMode = "top";
 
 window.addEventListener("resize", resize);
+const stage = viewCanvas.parentElement;
+if (stage instanceof HTMLElement) new ResizeObserver(() => resize()).observe(stage);
 resize();
 rebuild();
 
