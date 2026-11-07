@@ -21,6 +21,8 @@ export const MATERIALS = {
   lacquer: { id: "lacquer", hex: "#f3eee7", roughness: 0.42, metalness: 0.02 },
   metalPale: { id: "metalPale", hex: "#ece7e0", roughness: 0.48, metalness: 0.06 },
   metalDark: { id: "metalDark", hex: "#3e3a36", roughness: 0.4, metalness: 0.7 },
+  plastic: { id: "plastic", hex: "#d9d5ce", roughness: 0.55, metalness: 0.02 },
+  screen: { id: "screen", hex: "#2a2e33", roughness: 0.22, metalness: 0.04 },
   led: {
     id: "led",
     hex: "#ffc9a0",

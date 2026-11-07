@@ -23,6 +23,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { unionBounds } from "../library/bounds.ts";
 import { buildBedroomSet, type LightAnchor } from "../library/bedroomSet.ts";
 import { buildDesk } from "../library/desk.ts";
 import { materialDef } from "../library/materials.ts";
@@ -256,9 +257,17 @@ button("Doors open", () => currentSet() === "wardrobe" && doorsOpen(), () => {
   else go({ doors: doorsOpen() ? null : "open" });
 });
 
-function frame(position: [number, number, number], target: [number, number, number]): void {
-  camera.position.set(position[0], position[1], position[2]);
-  controls.target.set(target[0], target[1], target[2]);
+function frameParts(parts: readonly MeshPart[]): void {
+  const box = unionBounds(parts);
+  const cx = (box.min[0] + box.max[0]) / 2;
+  const cz = (box.min[2] + box.max[2]) / 2;
+  const sx = box.max[0] - box.min[0];
+  const sy = box.max[1] - box.min[1];
+  const sz = box.max[2] - box.min[2];
+  const radius = Math.max(Math.hypot(sx, sy, sz) * 0.55, 0.4);
+  const dist = radius / Math.tan((camera.fov * Math.PI) / 360) * 0.72;
+  camera.position.set(cx + dist * 0.42, box.min[1] + sy * 0.46 + dist * 0.16, cz + dist * 0.92);
+  controls.target.set(cx, box.min[1] + sy * 0.42, cz);
   controls.update();
 }
 
@@ -273,17 +282,16 @@ function show(): void {
     groups.open.visible = active && doorsOpen();
   }
   if (selected === "bedroom") {
-    frame([2.05, 1.18, 2.55], [0, 0.72, -0.35]);
+    frameParts(bedroom.parts);
     caption.textContent =
       "Queen mattress 1.524 × 2.032 m, from the Sleep Foundation 60 × 80 in chart. The frame footprint is separate. LED light is an emissive strip plus rectangular area lights on the timber, not global illumination. Other mattress sizes are in the data and are not visually signed off.";
   } else if (selected === "desk") {
-    frame([1.05, 0.62, 1.05], [0, 0.58, 0.2]);
+    frameParts(desk.parts);
     caption.textContent =
       "Wall-mounted oak top, 1.20 × 0.52 × 0.032 m, surface at 0.74 m. Three pale brackets are the supports. Structural fixing is not assessed. The cable groove and the sizes are design choices, not a regulation.";
   } else {
     const model = currentWardrobe();
-    if (doorsOpen()) frame([0.15, 1.2, 3.15], [0, 1.05, 0.35]);
-    else frame([1.85, 1.2, 3.15], [0, 1.0, 0.3]);
+    frameParts(doorsOpen() ? model.partsOpen : model.partsClosed);
     const bays = model.request.sections.map((section) => section.kind).join(", ");
     caption.textContent = doorsOpen()
       ? `${model.id}: doors at 90°. The swing is access metadata, not part of the closed footprint. Usable depth stays ${model.usableDepthM} m.`

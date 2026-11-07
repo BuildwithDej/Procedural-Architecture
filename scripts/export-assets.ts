@@ -56,6 +56,7 @@ const metadata = {
     bracketCount: DESK_SPEC.bracketCount,
     mount: desk.mount,
     knee: desk.knee,
+    computer: desk.computer,
     dimensionsAre: "design choices, not a regulation or a structural approval",
   },
   wardrobeLimits: WARDROBE_LIMITS,

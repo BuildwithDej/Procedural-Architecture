@@ -115,6 +115,10 @@
       "clearHeightAtBracketM": 0.6839999999999999,
       "note": "Clear height is a design record for this desk, not an ergonomic standard."
     },
+    "computer": {
+      "containedOnTop": true,
+      "screen": "blank-panel"
+    },
     "dimensionsAre": "design choices, not a regulation or a structural approval"
   },
   "wardrobeLimits": {

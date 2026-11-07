@@ -1,4 +1,4 @@
-import { unionBounds } from "./bounds.ts";
+import { partBounds, unionBounds } from "./bounds.ts";
 import { boxBetween, roundedBox } from "./mesh.ts";
 import type { Aabb, MeshPart } from "./types.ts";
 
@@ -29,6 +29,28 @@ export const DESK_SPEC = {
   structuralApproval: "not-assessed",
 } as const;
 
+/** Generic desktop computer. Sizes are design choices for this one setup. The screen is a blank panel. */
+export const COMPUTER = {
+  screenWidthM: 0.53,
+  screenHeightM: 0.3,
+  screenThicknessM: 0.016,
+  standRiseM: 0.08,
+  neckWidthM: 0.05,
+  neckDepthM: 0.03,
+  baseWidthM: 0.18,
+  baseDepthM: 0.14,
+  baseThicknessM: 0.01,
+  keyboardWidthM: 0.42,
+  keyboardDepthM: 0.14,
+  keyboardHeightM: 0.016,
+  mouseWidthM: 0.058,
+  mouseDepthM: 0.1,
+  mouseHeightM: 0.026,
+  screenCenterZM: 0.2,
+  keyboardCenterZM: 0.4,
+  mouseCenterXM: 0.3,
+} as const;
+
 export interface DeskModel {
   id: string;
   parts: MeshPart[];
@@ -47,6 +69,10 @@ export interface DeskModel {
     clearHeightM: number;
     clearHeightAtBracketM: number;
     note: string;
+  };
+  computer: {
+    containedOnTop: boolean;
+    screen: "blank-panel";
   };
 }
 
@@ -116,6 +142,8 @@ export function buildDesk(): DeskModel {
     );
   }
 
+  parts.push(...computerParts(spec.surfaceHeightM));
+
   const underside = spec.surfaceHeightM - spec.topThicknessM;
   return {
     id: spec.id,
@@ -138,7 +166,103 @@ export function buildDesk(): DeskModel {
       clearHeightAtBracketM: underside - spec.armHeightM,
       note: "Clear height is a design record for this desk, not an ergonomic standard.",
     },
+    computer: {
+      containedOnTop: computerContained(parts),
+      screen: "blank-panel",
+    },
   };
+}
+
+function computerParts(surfaceY: number): MeshPart[] {
+  const spec = COMPUTER;
+  const baseY = surfaceY + spec.baseThicknessM / 2;
+  const neckY = surfaceY + spec.baseThicknessM + spec.standRiseM / 2;
+  const screenY = surfaceY + spec.baseThicknessM + spec.standRiseM + spec.screenHeightM / 2;
+  return [
+    roundedBox("computer-base", "plastic", {
+      width: spec.baseWidthM,
+      height: spec.baseThicknessM,
+      depth: spec.baseDepthM,
+      radius: 0.003,
+      curveSegments: 2,
+      center: [0, baseY, spec.screenCenterZM],
+    }),
+    roundedBox("computer-neck", "plastic", {
+      width: spec.neckWidthM,
+      height: spec.standRiseM,
+      depth: spec.neckDepthM,
+      radius: 0.004,
+      curveSegments: 2,
+      center: [0, neckY, spec.screenCenterZM],
+    }),
+    roundedBox("computer-bezel", "plastic", {
+      width: spec.screenWidthM,
+      height: spec.screenHeightM,
+      depth: spec.screenThicknessM,
+      radius: 0.004,
+      curveSegments: 2,
+      center: [0, screenY, spec.screenCenterZM],
+    }),
+    roundedBox("computer-screen", "screen", {
+      width: spec.screenWidthM - 0.028,
+      height: spec.screenHeightM - 0.028,
+      depth: 0.004,
+      radius: 0.002,
+      curveSegments: 1,
+      center: [0, screenY, spec.screenCenterZM + spec.screenThicknessM / 2],
+    }),
+    roundedBox("computer-keyboard", "plastic", {
+      width: spec.keyboardWidthM,
+      height: spec.keyboardHeightM,
+      depth: spec.keyboardDepthM,
+      radius: 0.004,
+      curveSegments: 2,
+      center: [0, surfaceY + spec.keyboardHeightM / 2, spec.keyboardCenterZM],
+    }),
+    roundedBox("computer-mouse", "plastic", {
+      width: spec.mouseWidthM,
+      height: spec.mouseHeightM,
+      depth: spec.mouseDepthM,
+      radius: 0.01,
+      curveSegments: 3,
+      center: [spec.mouseCenterXM, surfaceY + spec.mouseHeightM / 2, spec.keyboardCenterZM],
+    }),
+  ];
+}
+
+const COMPUTER_NAMES = [
+  "computer-base",
+  "computer-neck",
+  "computer-bezel",
+  "computer-screen",
+  "computer-keyboard",
+  "computer-mouse",
+] as const;
+
+export function computerContained(parts: readonly MeshPart[]): boolean {
+  const top = parts.find((part) => part.name === "desk-top");
+  if (!top) return false;
+  const slab = partBounds(top);
+  const margin = 0.012;
+  for (const name of COMPUTER_NAMES) {
+    const part = parts.find((item) => item.name === name);
+    if (!part) return false;
+    const box = partBounds(part);
+    if (box.min[0] < slab.min[0] + margin || box.max[0] > slab.max[0] - margin) return false;
+    if (box.min[2] < slab.min[2] + margin || box.max[2] > slab.max[2] - margin) return false;
+    if (box.min[1] < slab.max[1] - 0.003) return false;
+  }
+  const keyboard = partBounds(parts.find((part) => part.name === "computer-keyboard")!);
+  const screen = partBounds(parts.find((part) => part.name === "computer-screen")!);
+  const mouse = partBounds(parts.find((part) => part.name === "computer-mouse")!);
+  const separated =
+    keyboard.max[2] < screen.min[2] ||
+    keyboard.min[2] > screen.max[2] ||
+    keyboard.max[1] < screen.min[1] ||
+    keyboard.min[0] > screen.max[0] ||
+    keyboard.max[0] < screen.min[0];
+  const mouseClear = mouse.min[0] >= keyboard.max[0] - 0.002;
+  return separated && mouseClear;
 }
 
 export function bracketXs(): number[] {

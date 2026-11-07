@@ -7,7 +7,7 @@ import {
   PLACEHOLDER_FOOT_CLEARANCE_M,
   PLACEHOLDER_SIDE_CLEARANCE_M,
 } from "../src/library/bedroomSet.ts";
-import { bracketXs, buildDesk, DESK_SPEC } from "../src/library/desk.ts";
+import { bracketXs, buildDesk, computerContained, DESK_SPEC } from "../src/library/desk.ts";
 import { encodeGlb, glbJson } from "../src/library/glb.ts";
 import { materialDef } from "../src/library/materials.ts";
 import { INCH_M, MATTRESS_SIZES, mattressSize, PREVIEW_MATTRESS_ID } from "../src/library/mattressSizes.ts";
@@ -173,6 +173,12 @@ describe("desk", () => {
     expect(top.max[1]).toBeCloseTo(DESK_SPEC.surfaceHeightM, 2);
     expect(model.visualBounds.min[1]).toBeLessThan(model.knee.clearHeightM);
     expect(model.parts.some((part) => part.name === "desk-cable-slot")).toBe(true);
+    expect(model.computer.containedOnTop).toBe(true);
+    expect(model.computer.screen).toBe("blank-panel");
+    expect(computerContained(model.parts)).toBe(true);
+    expect(model.parts.some((part) => part.name === "computer-screen")).toBe(true);
+    expect(model.parts.some((part) => part.name === "computer-keyboard")).toBe(true);
+    expect(model.parts.some((part) => part.name === "computer-mouse")).toBe(true);
   });
 });
 
