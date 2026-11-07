@@ -71,6 +71,23 @@ input {
   font-size: 13px;
 }
 
+.top-links {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.asset-link {
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.asset-link:hover {
+  color: var(--ink);
+}
+
 .inspector {
   padding: 32px 28px 28px;
   border-right: 1px solid var(--line);

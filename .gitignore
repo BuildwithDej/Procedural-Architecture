@@ -25,3 +25,9 @@ dist-ssr
 
 # Vitest
 .vitest/
+
+# Private visual references. Do not commit.
+desk-references/
+bedroom-asset-reference.png
+*-reference.png
+*-reference.jpg

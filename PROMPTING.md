@@ -16,3 +16,6 @@ These are starter prompts written for this repo. Dej did not write them. Each on
 
 5. **“If a rule can be read two ways, ask before implementing it. Do not pick the reading yourself.”**
    Matches the brief: ambiguous clearances are Dej’s decision.
+
+6. **“Change an asset by editing its plain data: mattress id, desk spec, or wardrobe request. Do not scale the queen mesh. Do not put the asset into the room study.”**
+   The preview and the GLB both read that data. Footprint stays separate from the dressed mesh. An invalid wardrobe request should come back as errors and an alternative, not a resized carcass.

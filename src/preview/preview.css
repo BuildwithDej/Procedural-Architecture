@@ -1,0 +1,98 @@
+:root {
+  color-scheme: dark;
+  --bg: #161412;
+  --ink: #f4efe8;
+  --muted: #b7ab9e;
+  --line: rgba(255, 244, 230, 0.12);
+  --sans: "Instrument Sans", "Avenir Next", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+button,
+a {
+  font: inherit;
+  color: inherit;
+}
+
+.preview {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.preview-title {
+  display: flex;
+  gap: 18px;
+  align-items: baseline;
+  margin: 0;
+}
+
+.preview-title a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.preview-title strong {
+  font-weight: 520;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.choices button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.choices button[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: rgba(255, 214, 180, 0.45);
+  background: rgba(255, 186, 130, 0.08);
+}
+
+.caption {
+  margin: 0;
+  padding: 0 22px 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

@@ -2,13 +2,15 @@
 
 # Dej — one room
 
-A browser study of a single rectangular room. You edit the interior width, depth, and height in metres. An orthographic 3D view and a small plan both draw that same data. Milestone 1 only: no furniture, no wall dragging, no rules engine, and no account.
+A browser study of a single rectangular room. You edit the interior width, depth, and height in metres. An orthographic 3D view and a small plan both draw that same data. The room study stays empty: no wall dragging, no rules engine, and no account. Asset models are on a separate preview page.
 
 The sizes below are demonstration numbers for this study. They are not a building regulation.
 
 ## See it
 
-The app is only a local web page. `127.0.0.1` means the computer where Vite is running, not some other laptop.
+The room study is only a local web page. `127.0.0.1` means the computer where Vite is running, not some other laptop.
+
+Asset models are a separate page and are not dropped into this room: [http://127.0.0.1:43123/asset-preview.html](http://127.0.0.1:43123/asset-preview.html).
 
 ```bash
 npm install

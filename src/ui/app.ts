@@ -48,7 +48,14 @@ export function mountApp(root: HTMLElement): void {
   const milestone = document.createElement("p");
   milestone.className = "milestone";
   milestone.textContent = "Milestone 1";
-  bar.append(mark, roomTitle, milestone);
+  const trail = document.createElement("div");
+  trail.className = "top-links";
+  const assetLink = document.createElement("a");
+  assetLink.className = "asset-link";
+  assetLink.href = "/asset-preview.html";
+  assetLink.textContent = "Asset preview";
+  trail.append(assetLink, milestone);
+  bar.append(mark, roomTitle, trail);
 
   const inspector = document.createElement("aside");
   inspector.className = "inspector";

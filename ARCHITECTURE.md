@@ -1,6 +1,6 @@
 # Architecture
 
-Milestone 1 is in place. One rectangular room is drawn from width, depth, and height, with its door and window, in an orthographic 3D view and a 2D plan. Both views read the same room data. The workspace is the dark desktop layout Dej chose. Milestone 2 (a draggable wall) has not started. Furniture, rules, and the solver are not implemented. No reference plan image was provided.
+Milestone 1 is in place. One rectangular room is drawn from width, depth, and height, with its door and window, in an orthographic 3D view and a 2D plan. Both views read the same room data. The workspace is the dark desktop layout Dej chose. Milestone 2 (a draggable wall) has not started. The room study is still empty. A separate asset preview holds the first bedroom set, a wall-mounted desk, and a modular wardrobe. Rules and the solver are not implemented. No reference plan image was provided.
 
 ## Map
 
@@ -23,6 +23,31 @@ dimension text  →  applyDimensionText  →  the same Room, or a visible error
 | Solver | Not started | Do not invent solver behaviour. |
 | Generator | Not started | The long-term boundary generator is described in `SPEC.md` only. |
 | Tracing sheet | Not started | See below. Approval required. |
+
+## Asset library
+
+The room study does not import these models. They are a second page, `asset-preview.html`, so the orthographic empty room stays as it was.
+
+```
+mattress size id  →  fixed US width and length (metres)
+bed frame allowances, desk spec, or wardrobe request
+        →  plain meshes (positions, normals, indices) and footprint metadata
+        →  asset preview (Three.js) or GLB export
+later solver  →  reads footprint and clearance metadata, not the dressed mesh
+```
+
+| Piece | What the numbers mean |
+| --- | --- |
+| Mattress | Width and length from the Sleep Foundation size chart, converted at 0.0254 m per inch. Thickness is a model choice. The preview shows queen only. |
+| Bed footprint | Frame around that mattress: side overhang, foot overhang, headboard thickness. The duvet and pillows can stick out of this box. They are dressing, not the footprint. |
+| Clearance | 0.60 m at the sides and 0.90 m at the foot. Placeholder comfort values. Not a code minimum. |
+| Nightstands | Two wall-hung drawer boxes on cleats. The cleat is the support in the model. Structural fixing is not assessed. |
+| Feature wall | Fixed-width timber modules. A longer wall adds modules. It does not stretch a module. Bed surround is what the preview shows. Full wall is the same repeater with the LED still centred on the bed group. |
+| LED | An emissive strip plus two rectangular area lights, one washing up the panels and one washing down toward the bed. Not global illumination. An edit is an offset from that automatic run, so a later resize can reapply it. If the run would leave the wall or cross an opening, the layout returns alternatives and does not clip it. |
+| Desk | One wall-mounted oak top, 1.20 × 0.52 × 0.032 m, surface at 0.74 m, on three pale brackets. The floor under it is clear. The mount record says the desk needs a wall and that the fixing is not assessed. Sizes are design choices. |
+| Wardrobe | A request: bay count, clear bay width, usable depth, height, and a section per bay (hanging, shelves, drawers, or hanging over drawers). Carcass thickness stays 0.018 m. Usable depth is not shrunk to force a fit. An invalid request returns errors and a suggested alternative. It does not build a quiet compromise. Two valid requests are in the preview. Door swing is an access envelope outside the closed footprint. |
+
+Generated files in `library/` are the queen bedroom set, the desk, both closed wardrobes, and `metadata.json`. The GLB has the meshes and material factors. The page adds procedural fabric and timber textures that are not photographs.
 
 ## Presentation
 

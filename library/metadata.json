@@ -1,0 +1,268 @@
+{
+  "note": "Generated from src/library. GLB files carry mesh and PBR factors. The preview adds procedural textures that are not in the GLB.",
+  "mattressSource": "https://www.sleepfoundation.org/mattress-sizes",
+  "previewMattressId": "queen",
+  "mattressSizes": [
+    {
+      "id": "twin",
+      "widthIn": 38,
+      "lengthIn": 75,
+      "widthM": 0.9652,
+      "lengthM": 1.905
+    },
+    {
+      "id": "twinXl",
+      "widthIn": 38,
+      "lengthIn": 80,
+      "widthM": 0.9652,
+      "lengthM": 2.032
+    },
+    {
+      "id": "full",
+      "widthIn": 54,
+      "lengthIn": 75,
+      "widthM": 1.3716,
+      "lengthM": 1.905
+    },
+    {
+      "id": "queen",
+      "widthIn": 60,
+      "lengthIn": 80,
+      "widthM": 1.524,
+      "lengthM": 2.032
+    },
+    {
+      "id": "king",
+      "widthIn": 76,
+      "lengthIn": 80,
+      "widthM": 1.9304,
+      "lengthM": 2.032
+    },
+    {
+      "id": "calKing",
+      "widthIn": 72,
+      "lengthIn": 84,
+      "widthM": 1.8288,
+      "lengthM": 2.1336
+    }
+  ],
+  "mattressThicknessM": 0.28,
+  "mattressThicknessNote": "Design choice for the preview model. Sleep Foundation does not standardize thickness.",
+  "bedroomQueen": {
+    "frameWidthM": 1.6340000000000001,
+    "frameDepthM": 2.1919999999999997,
+    "bedGroupWidthM": 2.6340000000000003,
+    "footprint": {
+      "min": [
+        -1.442,
+        0,
+        -1.1159999999999999
+      ],
+      "max": [
+        1.442,
+        2.4,
+        1.0959999999999999
+      ]
+    },
+    "bedFootprint": {
+      "min": [
+        -0.8170000000000001,
+        0,
+        -1.0959999999999999
+      ],
+      "max": [
+        0.8170000000000001,
+        0.76,
+        1.0959999999999999
+      ]
+    },
+    "clearance": {
+      "sideM": 0.6,
+      "footM": 0.9,
+      "status": "placeholder-comfort"
+    },
+    "moduleWidthM": 0.4,
+    "moduleCount": 7,
+    "featureWallHeightM": 2.4,
+    "lights": [
+      "led-upwash",
+      "led-downwash"
+    ],
+    "lighting": "Emissive strip meshes plus RectAreaLight upwash and downwash. Not global illumination."
+  },
+  "placeholderClearanceM": {
+    "side": 0.6,
+    "foot": 0.9,
+    "status": "placeholder-comfort"
+  },
+  "desk": {
+    "id": "desk-wall-oak",
+    "topWidthM": 1.2,
+    "topDepthM": 0.52,
+    "topThicknessM": 0.032,
+    "surfaceHeightM": 0.74,
+    "bracketCount": 3,
+    "mount": {
+      "kind": "wall-mounted",
+      "structuralApproval": "not-assessed",
+      "wallSegmentLengthM": 1.2,
+      "projectionFromWallM": 0.52,
+      "surfaceHeightM": 0.74,
+      "floorContact": "none"
+    },
+    "knee": {
+      "clearHeightM": 0.708,
+      "clearHeightAtBracketM": 0.6839999999999999,
+      "note": "Clear height is a design record for this desk, not an ergonomic standard."
+    },
+    "dimensionsAre": "design choices, not a regulation or a structural approval"
+  },
+  "wardrobeLimits": {
+    "bayCount": {
+      "min": 1,
+      "max": 4
+    },
+    "bayWidthM": {
+      "min": 0.42,
+      "max": 0.65
+    },
+    "usableDepthM": {
+      "min": 0.52,
+      "max": 0.68
+    },
+    "heightM": {
+      "min": 1.9,
+      "max": 2.4
+    },
+    "drawerCount": {
+      "min": 2,
+      "max": 5
+    },
+    "minDrawerFaceM": 0.14,
+    "railHeightM": {
+      "min": 1.05,
+      "max": 1.85
+    },
+    "minShelfGapM": 0.16
+  },
+  "wardrobes": [
+    {
+      "id": "three-bay-hang-shelf-drawers",
+      "bayCount": 3,
+      "bayWidthM": 0.5,
+      "usableDepthM": 0.56,
+      "heightM": 2.1,
+      "overallWidthM": 1.572,
+      "exteriorDepthM": 0.5980000000000001,
+      "carcassThicknessM": 0.018,
+      "sections": [
+        {
+          "kind": "hanging",
+          "railHeightM": 1.58
+        },
+        {
+          "kind": "shelves",
+          "shelfHeightsM": [
+            0.48,
+            0.9,
+            1.32,
+            1.72
+          ]
+        },
+        {
+          "kind": "hanging-and-drawers",
+          "railHeightM": 1.62,
+          "drawerCount": 2
+        }
+      ],
+      "footprint": {
+        "min": [
+          -0.786,
+          0,
+          0
+        ],
+        "max": [
+          0.786,
+          2.1,
+          0.5980000000000001
+        ]
+      },
+      "doors": [
+        {
+          "bayIndex": 0,
+          "hinge": "left",
+          "widthM": 0.494,
+          "openAngleDeg": 90,
+          "sweepRadiusM": 0.494,
+          "openMaxZ": 1.0920000076293945
+        },
+        {
+          "bayIndex": 1,
+          "hinge": "left",
+          "widthM": 0.494,
+          "openAngleDeg": 90,
+          "sweepRadiusM": 0.494,
+          "openMaxZ": 1.0920000076293945
+        },
+        {
+          "bayIndex": 2,
+          "hinge": "left",
+          "widthM": 0.494,
+          "openAngleDeg": 90,
+          "sweepRadiusM": 0.494,
+          "openMaxZ": 1.0920000076293945
+        }
+      ]
+    },
+    {
+      "id": "two-bay-hang-drawers",
+      "bayCount": 2,
+      "bayWidthM": 0.58,
+      "usableDepthM": 0.6,
+      "heightM": 2,
+      "overallWidthM": 1.214,
+      "exteriorDepthM": 0.638,
+      "carcassThicknessM": 0.018,
+      "sections": [
+        {
+          "kind": "hanging",
+          "railHeightM": 1.5
+        },
+        {
+          "kind": "drawers",
+          "drawerCount": 4
+        }
+      ],
+      "footprint": {
+        "min": [
+          -0.607,
+          0,
+          0
+        ],
+        "max": [
+          0.607,
+          2,
+          0.638
+        ]
+      },
+      "doors": [
+        {
+          "bayIndex": 0,
+          "hinge": "left",
+          "widthM": 0.574,
+          "openAngleDeg": 90,
+          "sweepRadiusM": 0.574,
+          "openMaxZ": 1.2120000123977661
+        },
+        {
+          "bayIndex": 1,
+          "hinge": "left",
+          "widthM": 0.574,
+          "openAngleDeg": 90,
+          "sweepRadiusM": 0.574,
+          "openMaxZ": 1.2120000123977661
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,23 @@
 
 Lab notebook for milestone 1. It lists ideas we actually tried, what worked, what failed, and what we threw out. It is not a literature review. Nothing below is a solver result. Papers named for a later generator were not opened.
 
+## Asset preview
+
+Dej asked for original models after the GitHub import, then a wall-mounted desk, then a wardrobe that follows storage requirements. Reference photos stayed out of the repo. Nothing here is placed in the room study, and nothing here is a solver.
+
+| Choice | What it is | Where |
+| --- | --- | --- |
+| Queen preview, other US sizes kept as data | Sleep Foundation chart, 7 Nov 2026: twin 38×75, twin XL 38×80, full 54×75, queen 60×80, king 76×80, California king 72×84 inches. Metres are inches × 0.0254. Thickness is not on that chart. The model uses 0.28 m. | `src/library/mattressSizes.ts` |
+| Frame separate from the mattress | Side overhang 0.055 m, foot 0.05 m, headboard 0.11 m thick. Duvet and pillows are outside the bed footprint. | `src/library/bedroomSet.ts` |
+| Side 0.60 m and foot 0.90 m | Placeholder comfort only. Not checked against a code. | same |
+| Bed surround panels, fixed 0.40 m modules | Repeating modules instead of stretching grain. Full-wall mode exists in `layoutFeatureWall` and is tested. The page shows the surround. | `src/library/panels.ts` |
+| LED | Emissive strips plus `RectAreaLight` upwash and downwash on `MeshStandardMaterial`. A 12 m wall keeps the lit run centred on the bed group. An edit that leaves the wall is rejected with the automatic run offered back. | preview page, `panels.ts` |
+| Wall-mounted desk | 1.20 × 0.52 × 0.032 m top, surface at 0.74 m, three brackets with plates and struts, small rear cable groove. Inspired by Dej’s first pin (thin timber, pale brackets, open floor), not a copy of it. The Z-frame pin and the glass trestle pin were not modelled. Fixing is not assessed. | `src/library/desk.ts` |
+| Wardrobe requests | Three-bay (hang, shelves, hang over two drawers) and two-bay (hang, four drawers). Same 0.018 m carcass. Different bay count, width, depth, and height, so one is not a scale of the other. A 0.40 m usable depth is refused and 0.52 m is suggested. The sections stay as asked. | `src/library/wardrobe.ts` |
+| GLB | Real glTF 2.0 binaries written by `scripts/export-assets.ts`. Factors only. Procedural textures stay on the page. | `library/` |
+
+The bedroom page was rebuilt once after the first mesh came out inside-out (bow-tie quads). The second capture shows solid panels, a split upholstered headboard, layered pillows, a draped duvet, two floating nightstands, and a warm strip that lights the timber. Known gaps: the fabric noise is still coarse up close, the duvet folds are broad, brackets are a simple plate-and-strut, and there is no global illumination.
+
 ## Kept
 
 | Idea | What we saw | Where it lives |
