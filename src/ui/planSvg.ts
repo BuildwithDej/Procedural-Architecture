@@ -95,3 +95,43 @@ export function renderPlan(svg: SVGSVGElement, plan: PlanGraphic, roomName: stri
   north.textContent = "N";
   svg.append(north);
 }
+
+/** Dimension and north marks only. They are labels, not a second room model. */
+export function renderMeasurementOverlay(
+  svg: SVGSVGElement,
+  plan: PlanGraphic,
+  viewBox: { x: number; y: number; width: number; height: number },
+): void {
+  svg.replaceChildren();
+  svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  const title = el("title", {});
+  title.textContent = "North mark and room dimensions over the top camera. Not a separate plan model.";
+  svg.append(title);
+  for (const dimension of plan.dimensions) {
+    for (const line of dimension.segments) svg.append(segment(line, "plan-dim"));
+    const text = el("text", {
+      class: "plan-label",
+      x: String(dimension.labelAt.x),
+      y: String(dimension.labelAt.y),
+      "font-size": String(plan.fontSize),
+      "text-anchor": dimension.axis === "depth" ? "start" : "middle",
+    });
+    text.textContent = dimension.label;
+    svg.append(text);
+  }
+  svg.append(
+    segment(
+      { x1: plan.north.tail.x, y1: plan.north.tail.y, x2: plan.north.tip.x, y2: plan.north.tip.y },
+      "plan-north",
+    ),
+  );
+  const north = el("text", {
+    class: "plan-north-label",
+    x: String(plan.north.labelAt.x),
+    y: String(plan.north.labelAt.y),
+    "font-size": String(plan.fontSize),
+    "text-anchor": "middle",
+  });
+  north.textContent = "N";
+  svg.append(north);
+}

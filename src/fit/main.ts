@@ -34,11 +34,12 @@ import {
 import { MATTRESS_SIZE_IDS } from "../library/mattressSizes.ts";
 import { transformPart, roundedBox } from "../library/mesh.ts";
 import { pointOnWall } from "../model/geometry.ts";
-import { projectPlan, worldToPlan } from "../plan/project.ts";
+import { projectPlan } from "../plan/project.ts";
 import type { MeshPart } from "../library/types.ts";
-import { renderPlan } from "../ui/planSvg.ts";
+import { renderMeasurementOverlay } from "../ui/planSvg.ts";
 import { frontWalls, presentationGlass, presentationSolids } from "../view3d/cutaway.ts";
 import { frameOrthographic } from "../view3d/frame.ts";
+import { frameTopDown } from "../view3d/topView.ts";
 import { WARDROBE_THREE_BAY, WARDROBE_TWO_BAY, buildWardrobe } from "../library/wardrobe.ts";
 
 const root = document.querySelector("#app");
@@ -77,7 +78,10 @@ const planCard = document.createElement("div");
 planCard.className = "plan-card";
 const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 svg.setAttribute("class", "plan-svg");
-planCard.append(svg);
+const northBadge = document.createElement("span");
+northBadge.className = "north-badge";
+northBadge.textContent = "N";
+planCard.append(northBadge, svg);
 stage.append(canvas, planCard);
 shell.append(bar, controls, stage, notes);
 root.append(shell);
@@ -92,6 +96,7 @@ renderer.shadowMap.type = PCFShadowMap;
 const scene = new Scene();
 scene.background = new Color("#1a1b1f");
 const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+const topCamera = new OrthographicCamera(-1, 1, 1, -1, 0.05, 40);
 const orbit = new OrbitControls(camera, canvas);
 orbit.enableDamping = true;
 scene.add(new HemisphereLight("#f4f1ea", "#6e6256", 0.45));
@@ -230,25 +235,30 @@ function draw(result: FitResult): void {
     orbit.update();
   }
 
-  const plan = projectPlan(room);
-  renderPlan(svg, plan, room.name);
-  for (const item of result.placed) {
-    const boxes = item.marks?.length ? item.marks.map((mark) => mark.box) : [item.footprint];
-    for (const box of boxes) appendPlanBox(svg, box, item.id === "desk" ? "plan-chair" : "plan-item");
-    if (item.marks?.length) appendPlanBox(svg, item.footprint, "plan-item");
-  }
+  applyTopCamera(room);
+  renderMeasurementOverlay(svg, projectPlan(room), frameTopDown(room, topAspect()).viewBox);
 }
 
-function appendPlanBox(svg: SVGSVGElement, box: { min: readonly number[]; max: readonly number[] }, className: string): void {
-  const rect = worldToPlan(box.min[0] ?? 0, box.max[2] ?? 0);
-  const far = worldToPlan(box.max[0] ?? 0, box.min[2] ?? 0);
-  const node = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  node.setAttribute("class", className);
-  node.setAttribute("x", String(Math.min(rect.x, far.x)));
-  node.setAttribute("y", String(Math.min(rect.y, far.y)));
-  node.setAttribute("width", String(Math.abs(far.x - rect.x)));
-  node.setAttribute("height", String(Math.abs(far.y - rect.y)));
-  svg.append(node);
+function topAspect(): number {
+  const width = Math.max(planCard.clientWidth, 1);
+  const height = Math.max(planCard.clientHeight, 1);
+  return width / height;
+}
+
+function applyTopCamera(room: Room): void {
+  const frame = frameTopDown(room, topAspect());
+  topCamera.up.set(frame.up[0], frame.up[1], frame.up[2]);
+  topCamera.position.set(frame.position[0], frame.position[1], frame.position[2]);
+  topCamera.lookAt(frame.target[0], frame.target[1], frame.target[2]);
+  topCamera.left = frame.left;
+  topCamera.right = frame.right;
+  topCamera.top = frame.top;
+  topCamera.bottom = frame.bottom;
+  topCamera.near = frame.near;
+  topCamera.far = frame.far;
+  topCamera.zoom = 1;
+  topCamera.updateProjectionMatrix();
+  topCamera.updateMatrixWorld();
 }
 
 function field(labelText: string, value: number, onInput: (value: number) => void): HTMLLabelElement {
@@ -457,15 +467,67 @@ function resize(): void {
   renderer.setSize(width, height, false);
 }
 
+function applyMainFrustum(): void {
+  const aspect = stage.clientWidth / Math.max(stage.clientHeight, 1);
+  const frame = frameOrthographic(request.room, aspect);
+  const halfH = frame.frustumHeight / 2;
+  const halfW = halfH * (Number.isFinite(aspect) && aspect > 0 ? aspect : 1);
+  camera.left = -halfW;
+  camera.right = halfW;
+  camera.top = halfH;
+  camera.bottom = -halfH;
+  camera.near = frame.near;
+  camera.far = frame.far;
+  camera.updateProjectionMatrix();
+}
+
 function loop(): void {
   orbit.update();
-  renderer.render(scene, camera);
+  renderBoth();
   requestAnimationFrame(loop);
+}
+
+function renderBoth(): void {
+  const width = Math.max(renderer.domElement.width, 1);
+  const height = Math.max(renderer.domElement.height, 1);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, width, height);
+  renderer.autoClear = true;
+  renderer.render(scene, camera);
+
+  const rect = insetPixels();
+  if (!rect) return;
+  applyTopCamera(request.room);
+  renderer.autoClear = false;
+  renderer.setScissorTest(true);
+  renderer.setViewport(rect.x, rect.y, rect.width, rect.height);
+  renderer.setScissor(rect.x, rect.y, rect.width, rect.height);
+  renderer.setClearColor(0x1a1b1f, 1);
+  renderer.clear(true, true);
+  const exposure = renderer.toneMappingExposure;
+  renderer.toneMappingExposure = 4.5;
+  renderer.render(scene, topCamera);
+  renderer.toneMappingExposure = exposure;
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, width, height);
+  renderer.autoClear = true;
+}
+
+function insetPixels(): { x: number; y: number; width: number; height: number } | null {
+  const canvasRect = canvas.getBoundingClientRect();
+  const cardRect = planCard.getBoundingClientRect();
+  if (cardRect.width < 8 || cardRect.height < 8 || canvasRect.width < 8) return null;
+  const x = cardRect.left - canvasRect.left;
+  const y = canvasRect.bottom - cardRect.bottom;
+  const width = cardRect.width;
+  const height = cardRect.height;
+  if (x + width <= 0 || y + height <= 0) return null;
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
 
 window.addEventListener("resize", () => {
   resize();
-  draw(fitFurniture(request));
+  if (!mountView) applyMainFrustum();
 });
 show();
 loop();

@@ -53,7 +53,7 @@ The desk carries one generic computer: a slim blank screen on a neck and base, a
 
 ## First fit
 
-`fit.html` is a demo, not a finished solver. It places the bed group, then the desk, then the wardrobe, in a rectangular room. The same placement drives the plan rectangles and the 3D meshes.
+`fit.html` is a demo, not a finished solver. It places the bed group, then the desk, then the wardrobe, in a rectangular room. The orbit view and the inset are two cameras on that one scene. The inset looks straight down, north up, at the same meshes. Dimension labels and the N mark are an overlay. The cutaway still follows the orbit camera only.
 
 - The bed, two nightstands, and the wall treatment are one group on the chosen wall.
 - Side clearance is 0.60 m of clear floor outside that group. Foot clearance is 0.90 m beyond the foot. Both are product choices, not a legal minimum.

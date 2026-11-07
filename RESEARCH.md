@@ -25,6 +25,8 @@ The desk then gained a blank monitor, keyboard, and mouse, checked so they stay 
 
 The first fit drew the timber panels on the room side of local zero but then placed local zero on the interior face, so the 20 mm panels sat inside the wall solid and z-fought its face. The panels, band, desk, and wardrobe now keep a 2 mm air gap and their thickness in the room. A chair sits in the right-hand gap under the desk, clear of the three brackets, with the back beyond the front edge.
 
+The fit inset is no longer a plan of rectangles. It is a second orthographic camera looking straight down at the same scene, north up. The N mark and the two dimensions are an overlay. The cutaway still follows only the orbit camera. The top pass raises exposure so the downward view stays readable; the orbit exposure stays 1.08.
+
 ## Kept
 
 | Idea | What we saw | Where it lives |
