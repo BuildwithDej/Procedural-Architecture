@@ -1,0 +1,16 @@
+---
+description: Procedural Architecture is a boundary-to-form generator
+alwaysApply: true
+---
+
+# Procedural Architecture
+
+The product is one site outline and a seeded exterior of 1 to 5 hollow floors. Read `ARCHITECTURE.md` before editing.
+
+The page is `index.html`. Do not add rooms, furniture, a fit demo, or an asset gallery unless the user asks.
+
+Floor height, slab thickness, and wall thickness in `FORM_DESIGN` are design choices. The area and edge limits in `FORM_SUPPORT` are editor support limits, not zoning. Do not describe either as a legal minimum.
+
+A floor stays inside the site only when the continuous polygon test passes. Do not replace that test with a few samples along an edge.
+
+Upper floors sit on the plate below. Do not add a cantilever unless the user asks. The same boundary, floor count, and seed must rebuild the same form.

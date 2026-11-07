@@ -1,0 +1,107 @@
+:root {
+  color-scheme: dark;
+  --bg: #141518;
+  --ink: #f4f4f5;
+  --muted: #9a9aa1;
+  --faint: #6f6f78;
+  --line: rgba(255, 255, 255, 0.08);
+  --danger: #e4a39c;
+  --ok: #d5e2c8;
+  --sans: "Instrument Sans", "Avenir Next", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app { height: 100%; margin: 0; }
+
+button, input, a { font: inherit; color: inherit; }
+
+.form-app {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
+  height: 100%;
+  min-height: 640px;
+}
+
+.form-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.form-bar a { color: var(--muted); text-decoration: none; }
+.form-bar strong { font-weight: 520; }
+.form-bar .grow { margin-left: auto; color: var(--faint); font-size: 13px; }
+
+.form-side {
+  overflow: auto;
+  padding: 14px 16px 24px;
+  border-right: 1px solid var(--line);
+}
+
+.stage { position: relative; min-width: 0; min-height: 0; background: #1a1b1f; }
+.stage canvas { width: 100%; height: 100%; display: block; }
+
+.slider { gap: 2px; }
+.slider output { justify-self: end; color: var(--ink); }
+input[type="range"] { width: 100%; accent-color: #e7d7c4; }
+.row label { flex: 1; min-width: 120px; }
+
+.board {
+  width: 100%;
+  height: 168px;
+  background: #101114;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+h1, h2 { font-size: 14px; font-weight: 520; margin: 0 0 8px; }
+p { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+.row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.row button, .checks button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.row button[aria-pressed="true"] { color: var(--ink); border-color: rgba(255, 214, 180, 0.45); }
+
+label { display: grid; gap: 4px; margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  padding: 6px 0;
+  width: 100%;
+}
+
+.checks { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 12px; }
+.checks label { display: flex; gap: 6px; align-items: center; margin: 0; }
+.checks input { width: auto; }
+
+.status { min-height: 2.6em; font-size: 13px; }
+.status.ok { color: var(--ok); }
+.status.bad { color: var(--danger); }
+.meta { color: var(--faint); font-size: 12px; margin-bottom: 8px; }
+.north-tag {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
