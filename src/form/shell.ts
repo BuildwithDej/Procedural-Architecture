@@ -37,8 +37,9 @@ function addTriangle(mesh: MeshData, a: Vec, b: Vec, c: Vec, y: number, normalY:
   const ia = pushVertex(mesh, a.x, y, a.y, 0, ny, 0);
   const ib = pushVertex(mesh, b.x, y, b.y, 0, ny, 0);
   const ic = pushVertex(mesh, c.x, y, c.y, 0, ny, 0);
-  if (ny > 0) mesh.indices.push(ia, ib, ic);
-  else mesh.indices.push(ia, ic, ib);
+  // A plan-CCW triangle has a downward geometric normal in this XZ mapping, so the upward face is reversed.
+  if (ny > 0) mesh.indices.push(ia, ic, ib);
+  else mesh.indices.push(ia, ib, ic);
 }
 
 function addQuad(
@@ -49,10 +50,20 @@ function addQuad(
   p3: [number, number, number],
   normal: [number, number, number],
 ): void {
-  const i0 = pushVertex(mesh, p0[0], p0[1], p0[2], normal[0], normal[1], normal[2]);
-  const i1 = pushVertex(mesh, p1[0], p1[1], p1[2], normal[0], normal[1], normal[2]);
-  const i2 = pushVertex(mesh, p2[0], p2[1], p2[2], normal[0], normal[1], normal[2]);
-  const i3 = pushVertex(mesh, p3[0], p3[1], p3[2], normal[0], normal[1], normal[2]);
+  const ax = p1[0] - p0[0];
+  const ay = p1[1] - p0[1];
+  const az = p1[2] - p0[2];
+  const bx = p2[0] - p0[0];
+  const by = p2[1] - p0[1];
+  const bz = p2[2] - p0[2];
+  const facing = (ay * bz - az * by) * normal[0] + (az * bx - ax * bz) * normal[1] + (ax * by - ay * bx) * normal[2];
+  const order = facing >= 0 ? [p0, p1, p2, p3] : [p0, p3, p2, p1];
+  const [a, b, c, d] = order;
+  if (!a || !b || !c || !d) return;
+  const i0 = pushVertex(mesh, a[0], a[1], a[2], normal[0], normal[1], normal[2]);
+  const i1 = pushVertex(mesh, b[0], b[1], b[2], normal[0], normal[1], normal[2]);
+  const i2 = pushVertex(mesh, c[0], c[1], c[2], normal[0], normal[1], normal[2]);
+  const i3 = pushVertex(mesh, d[0], d[1], d[2], normal[0], normal[1], normal[2]);
   mesh.indices.push(i0, i1, i2, i0, i2, i3);
 }
 
@@ -89,9 +100,6 @@ function wallEdgeMesh(outerA: Vec, outerB: Vec, innerB: Vec, innerA: Vec, y0: nu
   const inward = outward ? { x: -outward.x, y: -outward.y } : null;
   if (!outward || !inward) return null;
   const mesh = emptyMesh();
-  const along = { x: outerB.x - outerA.x, y: outerB.y - outerA.y };
-  const length = Math.hypot(along.x, along.y) || 1;
-  const tangent: [number, number, number] = [along.x / length, 0, along.y / length];
   addQuad(
     mesh,
     [outerA.x, y0, outerA.y],
@@ -115,22 +123,6 @@ function wallEdgeMesh(outerA: Vec, outerB: Vec, innerB: Vec, innerA: Vec, y0: nu
     [innerB.x, y1, innerB.y],
     [innerA.x, y1, innerA.y],
     [0, 1, 0],
-  );
-  addQuad(
-    mesh,
-    [outerA.x, y0, outerA.y],
-    [innerA.x, y0, innerA.y],
-    [innerA.x, y1, innerA.y],
-    [outerA.x, y1, outerA.y],
-    [-tangent[0], 0, -tangent[2]],
-  );
-  addQuad(
-    mesh,
-    [outerB.x, y0, outerB.y],
-    [outerB.x, y1, outerB.y],
-    [innerB.x, y1, innerB.y],
-    [innerB.x, y0, innerB.y],
-    [tangent[0], 0, tangent[2]],
   );
   return { mesh, outward, south: outward.y < -0.35 };
 }

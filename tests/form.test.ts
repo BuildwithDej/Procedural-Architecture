@@ -22,7 +22,33 @@ import {
   triangulationCovers,
   type Vec,
 } from "../src/form/polygon.ts";
-import { buildFormGeometry } from "../src/form/shell.ts";
+import { buildFormGeometry, type MeshData } from "../src/form/shell.ts";
+
+function triangleNormal(mesh: MeshData, triangle: number): { x: number; y: number; z: number } {
+  const base = triangle * 3;
+  const read = (index: number) => {
+    const vertex = mesh.indices[index] ?? 0;
+    return {
+      x: mesh.positions[vertex * 3] ?? 0,
+      y: mesh.positions[vertex * 3 + 1] ?? 0,
+      z: mesh.positions[vertex * 3 + 2] ?? 0,
+    };
+  };
+  const a = read(base);
+  const b = read(base + 1);
+  const c = read(base + 2);
+  const ax = b.x - a.x;
+  const ay = b.y - a.y;
+  const az = b.z - a.z;
+  const bx = c.x - a.x;
+  const by = c.y - a.y;
+  const bz = c.z - a.z;
+  const x = ay * bz - az * by;
+  const y = az * bx - ax * bz;
+  const z = ax * by - ay * bx;
+  const length = Math.hypot(x, y, z) || 1;
+  return { x: x / length, y: y / length, z: z / length };
+}
 
 function sparseSamples(a: Vec, b: Vec, steps: number): Vec[] {
   const samples: Vec[] = [];
@@ -169,6 +195,7 @@ describe("hollow form", () => {
       expect(result.form.floorCount).toBe(floors);
       expect(result.form.floors).toHaveLength(floors);
       expect(formContainmentIssues(result.form)).toEqual([]);
+      expect(polygonArea(result.form.floors[0]?.outer ?? [])).toBeLessThan(polygonArea(result.form.site) * 0.62);
       expect(result.form.roof.id).toBe("roof");
       expect(result.form.roof.elevationM).toBe((floors - 1) * FORM_DESIGN.floorHeightM + FORM_DESIGN.floorHeightM);
       const elevations = result.form.floors.map((floor) => floor.elevationM);
@@ -190,6 +217,17 @@ describe("hollow form", () => {
       geometry.forEach((floor, index) => {
         expect(floor.walls.length).toBeGreaterThan(2);
         expect(floor.roof === null).toBe(index !== floors - 1);
+        if (floor.roof) expect(triangleNormal(floor.roof, 0).y).toBeGreaterThan(0.5);
+        expect(floor.walls.length).toBe(result.form.floors[index]?.outer.length);
+        for (const wall of floor.walls) {
+          expect(wall.mesh.indices.length).toBe(18);
+          const outer = triangleNormal(wall.mesh, 0);
+          const inner = triangleNormal(wall.mesh, 2);
+          const top = triangleNormal(wall.mesh, 4);
+          expect(outer.x * wall.outward.x + outer.z * wall.outward.y).toBeGreaterThan(0.5);
+          expect(inner.x * -wall.outward.x + inner.z * -wall.outward.y).toBeGreaterThan(0.5);
+          expect(top.y).toBeGreaterThan(0.5);
+        }
         const positions = [
           ...floor.slab.positions,
           ...floor.walls.flatMap((wall) => wall.mesh.positions),

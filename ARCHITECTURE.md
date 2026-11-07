@@ -23,7 +23,9 @@ A floor is kept only when its outer ring, interior ring, and each wall quad stay
 
 The orthographic camera is fit to the site extruded up through the roof, in the camera's own view, with a margin. A resize keeps that view direction and refits the frustum. Changing the outline, floor count, or seed frames the model again.
 
-The massing tries insets, edge setbacks, and rectangular corner bites. It keeps a plate near 55–85% of the area under it, and it prefers a plate whose corner count changed. That preference is a stand-in, not a finished definition of a good building. If every smaller plate fails, the level repeats the plate below and says so.
+The site ring is a limit. The ground floor is a compact plate inside it, with yard left around the plate. It does not trace a concave outline. Upper floors are smaller complete plates on the one below. A level that cannot step repeats the plate below.
+
+Each wall is one outer face, one inner face, and a top that shows the thickness. Those faces are wound outward, inward, and up. Neighbouring walls meet at the shared corner. The south-side cutaway is off unless it is switched on, and it only hides faces.
 
 `FORM_DESIGN` holds the 3.2 m floor, 0.28 m slab, and 0.25 m wall. `FORM_SUPPORT` holds the 18 m², 0.8 m, 48-corner, and ±500 m limits. Both are labeled in the page. Neither is a zoning rule.
 

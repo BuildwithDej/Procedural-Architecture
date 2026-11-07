@@ -6,11 +6,13 @@ import {
   insetPolygon,
   minEdgeLength,
   notchCorner,
+  pointInPolygon,
   polygonArea,
   polygonInside,
   selfIntersects,
   setbackEdge,
   signedArea,
+  triangulate,
   triangulationCovers,
   type Vec,
 } from "./polygon.ts";
@@ -186,10 +188,130 @@ function plateWorks(candidate: readonly Vec[], container: readonly Vec[], site: 
   return outer;
 }
 
+function interiorPoint(poly: readonly Vec[]): Vec {
+  const triangles = triangulate(poly);
+  let best = poly[0] ?? { x: 0, y: 0 };
+  let bestArea = -1;
+  for (let i = 0; i < triangles.length; i += 3) {
+    const a = poly[triangles[i] ?? -1];
+    const b = poly[triangles[i + 1] ?? -1];
+    const c = poly[triangles[i + 2] ?? -1];
+    if (!a || !b || !c) continue;
+    const area = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y));
+    if (area > bestArea) {
+      bestArea = area;
+      best = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
+    }
+  }
+  return best;
+}
+
+function orientedRect(center: Vec, width: number, depth: number, angle: number): Vec[] {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const hx = width / 2;
+  const hy = depth / 2;
+  const corners = [
+    [-hx, -hy],
+    [hx, -hy],
+    [hx, hy],
+    [-hx, hy],
+  ];
+  return ensureCCW(
+    corners.map(([x, y]) => ({
+      x: center.x + (x ?? 0) * cosine - (y ?? 0) * sine,
+      y: center.y + (x ?? 0) * sine + (y ?? 0) * cosine,
+    })),
+  );
+}
+
+function scaleAbout(poly: readonly Vec[], origin: Vec, scale: number): Vec[] {
+  return poly.map((point) => ({
+    x: origin.x + (point.x - origin.x) * scale,
+    y: origin.y + (point.y - origin.y) * scale,
+  }));
+}
+
+function fitInside(poly: readonly Vec[], origin: Vec, container: readonly Vec[]): Vec[] | null {
+  if (polygonInside(poly, container)) return poly.map((point) => ({ x: point.x, y: point.y }));
+  let low = 0.28;
+  let high = 1;
+  let best: Vec[] | null = null;
+  for (let step = 0; step < 10; step += 1) {
+    const scale = (low + high) / 2;
+    const scaled = scaleAbout(poly, origin, scale);
+    if (polygonInside(scaled, container)) {
+      best = scaled;
+      low = scale;
+    } else {
+      high = scale;
+    }
+  }
+  return best;
+}
+
+/** A plate is a volume when a smaller copy of it still exists. Thin strips fail this. */
+function isChunky(poly: readonly Vec[], clearance: number): boolean {
+  return insetPolygon(poly, clearance) !== null;
+}
+
+function placeGround(site: readonly Vec[], random: () => number): Vec[] | null {
+  const span = Math.sqrt(polygonArea(site));
+  const yard = insetPolygon(site, Math.min(1.8, Math.max(0.6, span * 0.05))) ?? site;
+  const anchor = interiorPoint(yard);
+  const clearance = insetPolygon(site, 2.6) ? 1.7 : insetPolygon(site, 1.5) ? 0.9 : 0.4;
+  const accepted: Vec[][] = [];
+  const consider = (poly: Vec[] | null) => {
+    if (!poly) return;
+    const plate = plateWorks(poly, site, site);
+    if (!plate || !isChunky(plate, clearance)) return;
+    if (polygonArea(plate) > polygonArea(site) * 0.62) return;
+    if (polygonArea(plate) < Math.max(FORM_DESIGN.minInteriorAreaM2 + 2, polygonArea(site) * 0.12)) return;
+    accepted.push(plate);
+  };
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const fraction = 0.28 + random() * 0.26;
+    const aspect = 0.6 + random() * 0.95;
+    const angle = random() * Math.PI;
+    const want = polygonArea(site) * fraction;
+    const width = Math.sqrt(want * aspect);
+    const depth = want / width;
+    const rollX = random();
+    const rollY = random();
+    const shifted = {
+      x: anchor.x + (rollX - 0.5) * span * 0.22,
+      y: anchor.y + (rollY - 0.5) * span * 0.22,
+    };
+    const origin = pointInPolygon(shifted, yard, true) ? shifted : anchor;
+    const fitted = fitInside(orientedRect(origin, width, depth, angle), origin, yard);
+    consider(fitted);
+    if (fitted) {
+      const bite = Math.min(width, depth) * (0.22 + random() * 0.12);
+      consider(notchCorner(fitted, Math.floor(random() * fitted.length) % fitted.length, bite, bite * (0.7 + random() * 0.4)));
+    }
+  }
+  if (accepted.length === 0) {
+    let fallback: Vec[] | null = null;
+    for (const distance of [span * 0.12, span * 0.2, 2.4, 3.6]) {
+      const next = insetPolygon(site, distance);
+      if (next && isChunky(next, clearance)) fallback = next;
+    }
+    consider(fallback);
+  }
+  if (accepted.length === 0) return plateWorks(yard, site, site);
+  const target = 0.36 + random() * 0.12;
+  accepted.sort(
+    (left, right) =>
+      Math.abs(polygonArea(left) / polygonArea(site) - target) - Math.abs(polygonArea(right) / polygonArea(site) - target),
+  );
+  return accepted[0] ?? null;
+}
+
 function stepPlate(base: readonly Vec[], site: readonly Vec[], random: () => number): Vec[] | null {
   const area = polygonArea(base);
   const span = Math.sqrt(area);
-  const target = 0.55 + random() * 0.3;
+  const target = 0.66 + random() * 0.16;
+  const clearance = insetPolygon(base, 2.4) ? 1.5 : 0.7;
   const rolls: number[] = [];
   for (let i = 0; i < SHAPE_TRIES; i += 1) rolls.push(random());
 
@@ -197,8 +319,9 @@ function stepPlate(base: readonly Vec[], site: readonly Vec[], random: () => num
   const consider = (poly: Vec[] | null) => {
     if (!poly) return;
     const plate = plateWorks(poly, base, site);
-    if (!plate) return;
-    if (polygonArea(plate) > area * 0.97) return;
+    if (!plate || !isChunky(plate, clearance)) return;
+    const ratio = polygonArea(plate) / area;
+    if (ratio > 0.9 || ratio < 0.5) return;
     accepted.push(plate);
   };
 
@@ -245,22 +368,7 @@ export function generateForm(input: { boundary: readonly Vec[]; floors: number; 
   const site = boundary.polygon;
   const random = mulberry32(input.seed);
 
-  const span = Math.sqrt(polygonArea(site));
-  const margins = [FORM_DESIGN.wallThicknessM, 0.45, Math.min(1.4, span * 0.08), Math.min(2.2, span * 0.14)];
-  const marginOrder = margins
-    .map((margin) => ({ margin, roll: random() }))
-    .sort((left, right) => left.roll - right.roll);
-
-  let ground: Vec[] | null = null;
-  for (const { margin } of marginOrder) {
-    const plate = insetPolygon(site, margin);
-    if (!plate) continue;
-    const shaped = stepPlate(plate, site, random) ?? plateWorks(plate, site, site);
-    if (shaped) {
-      ground = shaped;
-      break;
-    }
-  }
+  const ground = placeGround(site, random);
   if (!ground) {
     return {
       ok: false,

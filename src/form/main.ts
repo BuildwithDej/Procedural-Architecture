@@ -1,5 +1,6 @@
 import "./form.css";
 import {
+  ACESFilmicToneMapping,
   AmbientLight,
   BufferGeometry,
   Color,
@@ -11,10 +12,8 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
-  NeutralToneMapping,
   OrthographicCamera,
   PCFShadowMap,
-  PlaneGeometry,
   Scene,
   WebGLRenderer,
 } from "three";
@@ -79,11 +78,11 @@ app.innerHTML = `
       <div class="checks">
         <label><input id="show-slabs" type="checkbox" checked /> Floor slabs</label>
         <label><input id="show-roof" type="checkbox" /> Roof cap</label>
-        <label><input id="open-south" type="checkbox" checked /> Open south walls</label>
+        <label><input id="cutaway" type="checkbox" /> Cut away the south side</label>
       </div>
       <div class="row" id="isolate"></div>
       <p class="status" id="form-status"></p>
-      <p>Floor height ${FORM_DESIGN.floorHeightM} m, slab ${FORM_DESIGN.slabThicknessM} m, and wall ${FORM_DESIGN.wallThicknessM} m are design choices. Sites under ${FORM_SUPPORT.minSiteAreaM2} m² or sides under ${FORM_SUPPORT.minSiteEdgeM} m are outside what this editor supports. Those figures are not a zoning rule.</p>
+      <p>The outline is the limit. The floors sit inside it and do not have to trace it. Floor height ${FORM_DESIGN.floorHeightM} m, slab ${FORM_DESIGN.slabThicknessM} m, and wall ${FORM_DESIGN.wallThicknessM} m are design choices. Sites under ${FORM_SUPPORT.minSiteAreaM2} m² or sides under ${FORM_SUPPORT.minSiteEdgeM} m are outside what this editor supports. Those figures are not a zoning rule. Cut away the south side only hides faces. The shell stays complete.</p>
     </aside>
     <div class="stage">
       <canvas id="view"></canvas>
@@ -369,10 +368,10 @@ seedInput.addEventListener("input", () => rebuild());
 
 const showSlabs = document.querySelector("#show-slabs");
 const showRoof = document.querySelector("#show-roof");
-const openSouth = document.querySelector("#open-south");
+const cutawayInput = document.querySelector("#cutaway");
 showSlabs?.addEventListener("change", () => applyVisibility());
 showRoof?.addEventListener("change", () => applyVisibility());
-openSouth?.addEventListener("change", () => applyVisibility());
+cutawayInput?.addEventListener("change", () => applyVisibility());
 
 const isolateRow = document.querySelector("#isolate");
 function renderIsolate(form: BuildingForm | null): void {
@@ -405,9 +404,9 @@ function renderIsolate(form: BuildingForm | null): void {
 
 const renderer = new WebGLRenderer({ canvas: viewCanvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setClearColor(new Color("#e4e1da"));
-renderer.toneMapping = NeutralToneMapping;
-renderer.toneMappingExposure = 1;
+renderer.setClearColor(new Color("#1a1b1f"));
+renderer.toneMapping = ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
 
@@ -419,31 +418,24 @@ controls.target.set(8, 4, 8);
 controls.enableDamping = true;
 controls.update();
 
-scene.add(new AmbientLight("#f4f1ea", 0.55));
-scene.add(new HemisphereLight("#f7f5f0", "#d5d0c6", 0.65));
-const sun = new DirectionalLight("#fffaf3", 1.15);
+scene.add(new AmbientLight("#d9d3c8", 0.24));
+scene.add(new HemisphereLight("#f4efe6", "#2a2824", 0.48));
+const sun = new DirectionalLight("#fff6ea", 1.3);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 scene.add(sun);
 scene.add(sun.target);
-const fill = new DirectionalLight("#f3f6fb", 0.85);
+const fill = new DirectionalLight("#e4ddd2", 0.32);
 scene.add(fill);
 scene.add(fill.target);
-const ground = new Mesh(
-  new PlaneGeometry(800, 800),
-  new MeshStandardMaterial({ color: "#e7e4dc", roughness: 1 }),
-);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
 
 const building = new Group();
 scene.add(building);
 
-const STONE = ["#f4f1ea", "#e8e3da", "#f7f4ee", "#ebe6dd", "#f1ece4"];
-const SLABS = ["#fbf9f4", "#f3eee6", "#faf6f1", "#efe9e0", "#f6f1ea"];
+const STONE = ["#e7e0d4", "#ddd4c8", "#efe6da", "#e3d9cc", "#e9e1d4"];
+const SLABS = ["#f3ece2", "#ebe3d6", "#f6efe4", "#e8dfd2", "#f0e7da"];
 
 interface FloorTag {
   kind: "slab" | "wall" | "roof";
@@ -497,19 +489,19 @@ function showForm(form: BuildingForm): void {
   for (const point of form.site) outline.push(point.x, 0.05, point.y);
   const outlineGeometry = new BufferGeometry();
   outlineGeometry.setAttribute("position", new Float32BufferAttribute(outline, 3));
-  const loop = new LineLoop(outlineGeometry, new MeshBasicMaterial({ color: "#5c584f" }));
+  const loop = new LineLoop(outlineGeometry, new MeshBasicMaterial({ color: "#c8c2b8" }));
   building.add(loop);
 
   const geometry = buildFormGeometry(form);
   geometry.forEach((floor, index) => {
     const wallMaterial = new MeshStandardMaterial({
       color: STONE[index % STONE.length],
-      roughness: 0.72,
+      roughness: 0.88,
       metalness: 0,
     });
     const slabMaterial = new MeshStandardMaterial({
       color: SLABS[index % SLABS.length],
-      roughness: 0.8,
+      roughness: 0.9,
       metalness: 0,
     });
     building.add(meshFrom(floor.slab, slabMaterial, { kind: "slab", floor: index, south: false }));
@@ -519,8 +511,10 @@ function showForm(form: BuildingForm): void {
       );
     }
     if (floor.roof) {
-      const roofMaterial = new MeshStandardMaterial({ color: "#ddd8ce", roughness: 0.78, metalness: 0 });
-      building.add(meshFrom(floor.roof, roofMaterial, { kind: "roof", floor: index, south: false }));
+      const roofMaterial = new MeshStandardMaterial({ color: "#d5cdc0", roughness: 0.9, metalness: 0 });
+      const roofMesh = meshFrom(floor.roof, roofMaterial, { kind: "roof", floor: index, south: false });
+      roofMesh.castShadow = false;
+      building.add(roofMesh);
     }
   });
   applyVisibility();
@@ -531,7 +525,7 @@ function showForm(form: BuildingForm): void {
 function applyVisibility(): void {
   const slabsOn = showSlabs instanceof HTMLInputElement ? showSlabs.checked : true;
   const roofOn = showRoof instanceof HTMLInputElement ? showRoof.checked : false;
-  const open = openSouth instanceof HTMLInputElement ? openSouth.checked : true;
+  const open = cutawayInput instanceof HTMLInputElement && cutawayInput.checked;
   for (const child of building.children) {
     if (!(child instanceof Mesh)) continue;
     const tagged = floorTag(child);
@@ -748,7 +742,9 @@ if (params.get("empty") === "1") {
 
 if (params.get("roof") === "1" && showRoof instanceof HTMLInputElement) showRoof.checked = true;
 if (params.get("slabs") === "0" && showSlabs instanceof HTMLInputElement) showSlabs.checked = false;
-if (params.get("open") === "0" && openSouth instanceof HTMLInputElement) openSouth.checked = false;
+if ((params.get("cutaway") === "1" || params.get("open") === "1") && cutawayInput instanceof HTMLInputElement) {
+  cutawayInput.checked = true;
+}
 if (params.get("view") === "top") viewMode = "top";
 
 window.addEventListener("resize", resize);
