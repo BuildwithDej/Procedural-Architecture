@@ -50,9 +50,14 @@ button, input, a { font: inherit; color: inherit; }
 .stage { position: relative; min-width: 0; min-height: 0; background: #1a1b1f; }
 .stage canvas { width: 100%; height: 100%; display: block; }
 
+.slider { gap: 2px; }
+.slider output { justify-self: end; color: var(--ink); }
+input[type="range"] { width: 100%; accent-color: #e7d7c4; }
+.row label { flex: 1; min-width: 120px; }
+
 .board {
   width: 100%;
-  height: 280px;
+  height: 168px;
   background: #101114;
   border: 1px solid var(--line);
   border-radius: 8px;

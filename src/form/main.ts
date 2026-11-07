@@ -21,6 +21,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
   FLOOR_COUNT_MAX,
   FLOOR_COUNT_MIN,
+  FORM_CONTROLS,
   FORM_DESIGN,
   FORM_SUPPORT,
   generateForm,
@@ -40,6 +41,10 @@ const params = new URLSearchParams(location.search);
 const initialPreset = params.get("preset") ?? "ell";
 const initialFloors = Number(params.get("floors") ?? "3");
 const initialSeed = Number(params.get("seed") ?? "11");
+const initialCoverage = Number(params.get("coverage") ?? FORM_CONTROLS.coverageDefault);
+const initialSetback = Number(params.get("setback") ?? FORM_CONTROLS.setbackDefault);
+const initialTwist = Number(params.get("twist") ?? FORM_CONTROLS.twistDefaultDeg);
+const initialOrganic = Number(params.get("organic") ?? FORM_CONTROLS.organicDefault);
 
 app.innerHTML = `
   <div class="form-app">
@@ -48,9 +53,37 @@ app.innerHTML = `
       <span class="grow">Boundary to hollow floors</span>
     </header>
     <aside class="form-side">
+      <h1>Design</h1>
+      <label class="slider">Coverage <output id="coverage-out"></output>
+        <input id="coverage" type="range" min="${FORM_CONTROLS.coverageMin}" max="${FORM_CONTROLS.coverageMax}" step="0.01" value="${initialCoverage}" />
+      </label>
+      <label class="slider">Setback <output id="setback-out"></output>
+        <input id="setback" type="range" min="${FORM_CONTROLS.setbackMin}" max="${FORM_CONTROLS.setbackMax}" step="0.01" value="${initialSetback}" />
+      </label>
+      <label class="slider">Twist <output id="twist-out"></output>
+        <input id="twist" type="range" min="${FORM_CONTROLS.twistMinDeg}" max="${FORM_CONTROLS.twistMaxDeg}" step="1" value="${initialTwist}" />
+      </label>
+      <label class="slider">Shape <output id="organic-out"></output>
+        <input id="organic" type="range" min="${FORM_CONTROLS.organicMin}" max="${FORM_CONTROLS.organicMax}" step="0.01" value="${initialOrganic}" />
+      </label>
+      <div class="row">
+        <label>Floors
+          <input id="floors" type="number" min="${FLOOR_COUNT_MIN}" max="${FLOOR_COUNT_MAX}" step="1" value="${initialFloors}" />
+        </label>
+        <label>Seed
+          <input id="seed" type="number" step="1" value="${initialSeed}" />
+        </label>
+      </div>
+      <div class="row">
+        <button type="button" id="regenerate">New seed</button>
+        <button type="button" id="view-model" aria-pressed="true">Model</button>
+        <button type="button" id="view-plan" aria-pressed="false">Plan</button>
+      </div>
+      <p class="meta">Plan shows one floor from above. Model restores every cap.</p>
+      <div class="row" id="plan-floors"></div>
       <h1>Site boundary</h1>
-      <p>Click corners in metres. Click the first corner again to close. East is to the right, north is up. Drag a corner after the outline is closed.</p>
-      <canvas class="board" id="board" width="680" height="520"></canvas>
+      <p>Click corners in metres. East is right, north is up. Click the first corner to close.</p>
+      <canvas class="board" id="board" width="680" height="360"></canvas>
       <p class="meta" id="meta"></p>
       <div class="row">
         <button type="button" id="close">Close</button>
@@ -63,26 +96,8 @@ app.innerHTML = `
         <button type="button" data-preset="notch">Notch</button>
         <button type="button" data-preset="skew">Skew</button>
       </div>
-      <label>Floors, ${FLOOR_COUNT_MIN} to ${FLOOR_COUNT_MAX}
-        <input id="floors" type="number" min="${FLOOR_COUNT_MIN}" max="${FLOOR_COUNT_MAX}" step="1" value="${initialFloors}" />
-      </label>
-      <div class="row" id="floor-picks"></div>
-      <label>Seed
-        <input id="seed" type="number" step="1" value="${initialSeed}" />
-      </label>
-      <div class="row">
-        <button type="button" id="regenerate">New seed</button>
-        <button type="button" id="view-model" aria-pressed="true">Model</button>
-        <button type="button" id="view-top" aria-pressed="false">Top</button>
-      </div>
-      <div class="checks">
-        <label><input id="show-slabs" type="checkbox" checked /> Floor slabs</label>
-        <label><input id="show-roof" type="checkbox" /> Roof cap</label>
-        <label><input id="cutaway" type="checkbox" /> Cut away the south side</label>
-      </div>
-      <div class="row" id="isolate"></div>
       <p class="status" id="form-status"></p>
-      <p>The outline is the limit. The floors sit inside it and do not have to trace it. Floor height ${FORM_DESIGN.floorHeightM} m, slab ${FORM_DESIGN.slabThicknessM} m, and wall ${FORM_DESIGN.wallThicknessM} m are design choices. Sites under ${FORM_SUPPORT.minSiteAreaM2} m² or sides under ${FORM_SUPPORT.minSiteEdgeM} m are outside what this editor supports. Those figures are not a zoning rule. Cut away the south side only hides faces. The shell stays complete.</p>
+      <p>Coverage is a fraction of the site. Setback 0 keeps the same plate; 1 steps back hard. Twist is degrees per level. Shape 0 is a rectangle and 1 is a rounded outline with at most ${FORM_CONTROLS.maxCornerSegments} segments per corner. Floor height ${FORM_DESIGN.floorHeightM} m, slab ${FORM_DESIGN.slabThicknessM} m, and wall ${FORM_DESIGN.wallThicknessM} m are design choices. Sites under ${FORM_SUPPORT.minSiteAreaM2} m² or sides under ${FORM_SUPPORT.minSiteEdgeM} m are outside what this editor supports, not a zoning rule.</p>
     </aside>
     <div class="stage">
       <canvas id="view"></canvas>
@@ -132,22 +147,8 @@ let points: Vec[] = [];
 let closed = false;
 let dragIndex: number | null = null;
 let viewBox: ViewBox = { minX: -1, minY: -1, maxX: 24, maxY: 18 };
-let isolate: number | null = null;
-let viewMode: "model" | "top" = "model";
-
-const floorPicks = document.querySelector("#floor-picks");
-if (floorPicks instanceof HTMLElement) {
-  for (let floor = FLOOR_COUNT_MIN; floor <= FLOOR_COUNT_MAX; floor += 1) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = String(floor);
-    button.addEventListener("click", () => {
-      floorsInput.value = String(floor);
-      rebuild();
-    });
-    floorPicks.append(button);
-  }
-}
+let planFloor: number | null = null;
+let viewMode: "model" | "plan" = "model";
 
 function fitBox(pts: readonly Vec[]): void {
   if (pts.length === 0) {
@@ -366,39 +367,40 @@ document.querySelector("#regenerate")?.addEventListener("click", () => {
 floorsInput.addEventListener("input", () => rebuild());
 seedInput.addEventListener("input", () => rebuild());
 
-const showSlabs = document.querySelector("#show-slabs");
-const showRoof = document.querySelector("#show-roof");
-const cutawayInput = document.querySelector("#cutaway");
-showSlabs?.addEventListener("change", () => applyVisibility());
-showRoof?.addEventListener("change", () => applyVisibility());
-cutawayInput?.addEventListener("change", () => applyVisibility());
+for (const id of ["coverage", "setback", "twist", "organic"]) {
+  document.querySelector(`#${id}`)?.addEventListener("input", () => rebuild());
+}
 
-const isolateRow = document.querySelector("#isolate");
-function renderIsolate(form: BuildingForm | null): void {
-  if (!(isolateRow instanceof HTMLElement)) return;
-  isolateRow.replaceChildren();
+const planRow = document.querySelector("#plan-floors");
+function renderPlanFloors(form: BuildingForm | null): void {
+  if (!(planRow instanceof HTMLElement)) return;
+  planRow.replaceChildren();
   if (!form) return;
-  const all = document.createElement("button");
-  all.type = "button";
-  all.textContent = "All floors";
-  all.setAttribute("aria-pressed", isolate === null ? "true" : "false");
-  all.addEventListener("click", () => {
-    isolate = null;
+  const closed = document.createElement("button");
+  closed.type = "button";
+  closed.textContent = "Closed";
+  closed.setAttribute("aria-pressed", viewMode === "plan" && planFloor === null ? "true" : "false");
+  closed.addEventListener("click", () => {
+    viewMode = "plan";
+    planFloor = null;
+    if (currentForm) frameCamera(currentForm, false);
     applyVisibility();
-    renderIsolate(form);
+    renderPlanFloors(form);
   });
-  isolateRow.append(all);
+  planRow.append(closed);
   for (const floor of form.floors) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = floor.id;
-    button.setAttribute("aria-pressed", isolate === floor.index ? "true" : "false");
+    button.setAttribute("aria-pressed", viewMode === "plan" && planFloor === floor.index ? "true" : "false");
     button.addEventListener("click", () => {
-      isolate = floor.index;
+      viewMode = "plan";
+      planFloor = floor.index;
+      if (currentForm) frameCamera(currentForm, false);
       applyVisibility();
-      renderIsolate(form);
+      renderPlanFloors(form);
     });
-    isolateRow.append(button);
+    planRow.append(button);
   }
 }
 
@@ -418,7 +420,8 @@ controls.target.set(8, 4, 8);
 controls.enableDamping = true;
 controls.update();
 
-scene.add(new AmbientLight("#d9d3c8", 0.24));
+const ambient = new AmbientLight("#d9d3c8", 0.24);
+scene.add(ambient);
 scene.add(new HemisphereLight("#f4efe6", "#2a2824", 0.48));
 const sun = new DirectionalLight("#fff6ea", 1.3);
 sun.castShadow = true;
@@ -438,7 +441,7 @@ const STONE = ["#e7e0d4", "#ddd4c8", "#efe6da", "#e3d9cc", "#e9e1d4"];
 const SLABS = ["#f3ece2", "#ebe3d6", "#f6efe4", "#e8dfd2", "#f0e7da"];
 
 interface FloorTag {
-  kind: "slab" | "wall" | "roof";
+  kind: "slab" | "wall" | "cap";
   floor: number;
   south: boolean;
 }
@@ -448,7 +451,7 @@ function floorTag(mesh: Mesh): FloorTag | null {
   if (typeof data !== "object" || data === null) return null;
   if (!("kind" in data) || !("floor" in data) || !("south" in data)) return null;
   const { kind, floor, south } = data as { kind: unknown; floor: unknown; south: unknown };
-  if ((kind === "slab" || kind === "wall" || kind === "roof") && typeof floor === "number" && typeof south === "boolean") {
+  if ((kind === "slab" || kind === "wall" || kind === "cap") && typeof floor === "number" && typeof south === "boolean") {
     return { kind, floor, south };
   }
   return null;
@@ -510,30 +513,36 @@ function showForm(form: BuildingForm): void {
         meshFrom(wall.mesh, wallMaterial, { kind: "wall", floor: index, south: wall.south }),
       );
     }
-    if (floor.roof) {
-      const roofMaterial = new MeshStandardMaterial({ color: "#d5cdc0", roughness: 0.9, metalness: 0 });
-      const roofMesh = meshFrom(floor.roof, roofMaterial, { kind: "roof", floor: index, south: false });
-      roofMesh.castShadow = false;
-      building.add(roofMesh);
+    if (floor.cap) {
+      const capMaterial = new MeshStandardMaterial({
+        color: floor.capRole === "terrace" ? "#efe6d8" : "#d9d0c2",
+        roughness: 0.9,
+        metalness: 0,
+      });
+      const capMesh = meshFrom(floor.cap, capMaterial, { kind: "cap", floor: index, south: false });
+      capMesh.castShadow = false;
+      building.add(capMesh);
     }
   });
   applyVisibility();
   frameCamera(form, false);
-  renderIsolate(form);
+  renderPlanFloors(form);
 }
 
 function applyVisibility(): void {
-  const slabsOn = showSlabs instanceof HTMLInputElement ? showSlabs.checked : true;
-  const roofOn = showRoof instanceof HTMLInputElement ? showRoof.checked : false;
-  const open = cutawayInput instanceof HTMLInputElement && cutawayInput.checked;
+  sun.castShadow = viewMode === "model";
+  ambient.intensity = viewMode === "plan" ? 0.72 : 0.24;
   for (const child of building.children) {
     if (!(child instanceof Mesh)) continue;
     const tagged = floorTag(child);
     if (!tagged) continue;
-    const floorOk = isolate === null || tagged.floor === isolate;
-    if (tagged.kind === "slab") child.visible = floorOk && slabsOn;
-    else if (tagged.kind === "roof") child.visible = floorOk && roofOn;
-    else child.visible = floorOk && !(open && tagged.south);
+    if (viewMode === "model" || planFloor === null) {
+      child.visible = true;
+      continue;
+    }
+    if (tagged.floor > planFloor) child.visible = false;
+    else if (tagged.floor === planFloor && tagged.kind === "cap") child.visible = false;
+    else child.visible = true;
   }
 }
 
@@ -575,7 +584,7 @@ function siteSpan(form: BuildingForm): { centerX: number; centerZ: number; span:
 
 function canonicalView(form: BuildingForm): { eye: Vec3; target: Vec3; up: Vec3; mirrorX: boolean } {
   const { centerX, centerZ, span, top } = siteSpan(form);
-  if (viewMode === "top") {
+  if (viewMode === "plan") {
     return {
       eye: { x: centerX, y: top + span * 2, z: centerZ },
       target: { x: centerX, y: 0, z: centerZ },
@@ -628,11 +637,11 @@ function applyFrame(form: BuildingForm, eye: Vec3, target: Vec3, up: Vec3, mirro
   sun.shadow.camera.updateProjectionMatrix();
   fill.position.set(centerX, top * 0.55, centerZ - span * 1.3);
   fill.target.position.set(centerX, top * 0.4, centerZ);
-  northTag.hidden = viewMode !== "top";
+  northTag.hidden = viewMode !== "plan";
   const modelButton = document.querySelector("#view-model");
-  const topButton = document.querySelector("#view-top");
+  const planButton = document.querySelector("#view-plan");
   if (modelButton instanceof HTMLButtonElement) modelButton.setAttribute("aria-pressed", viewMode === "model" ? "true" : "false");
-  if (topButton instanceof HTMLButtonElement) topButton.setAttribute("aria-pressed", viewMode === "top" ? "true" : "false");
+  if (planButton instanceof HTMLButtonElement) planButton.setAttribute("aria-pressed", viewMode === "plan" ? "true" : "false");
 }
 
 function frameCamera(form: BuildingForm, keepDirection: boolean): void {
@@ -642,7 +651,7 @@ function frameCamera(form: BuildingForm, keepDirection: boolean): void {
       { x: camera.position.x, y: camera.position.y, z: camera.position.z },
       { x: controls.target.x, y: controls.target.y, z: controls.target.z },
       { x: camera.up.x, y: camera.up.y, z: camera.up.z },
-      viewMode === "top",
+      viewMode === "plan",
     );
     return;
   }
@@ -652,11 +661,21 @@ function frameCamera(form: BuildingForm, keepDirection: boolean): void {
 
 document.querySelector("#view-model")?.addEventListener("click", () => {
   viewMode = "model";
-  if (currentForm) frameCamera(currentForm, false);
+  planFloor = null;
+  if (currentForm) {
+    frameCamera(currentForm, false);
+    applyVisibility();
+    renderPlanFloors(currentForm);
+  }
 });
-document.querySelector("#view-top")?.addEventListener("click", () => {
-  viewMode = "top";
-  if (currentForm) frameCamera(currentForm, false);
+document.querySelector("#view-plan")?.addEventListener("click", () => {
+  viewMode = "plan";
+  if (planFloor === null && currentForm) planFloor = currentForm.floors.length - 1;
+  if (currentForm) {
+    frameCamera(currentForm, false);
+    applyVisibility();
+    renderPlanFloors(currentForm);
+  }
 });
 
 function resize(): void {
@@ -673,18 +692,28 @@ function setStatus(text: string, ok: boolean): void {
   statusEl.dataset.floors = ok ? String(currentForm?.floorCount ?? "") : "0";
 }
 
+function readControl(id: string, fallback: number): number {
+  const node = document.querySelector(`#${id}`);
+  const output = document.querySelector(`#${id}-out`);
+  const value = node instanceof HTMLInputElement ? Number(node.value) : fallback;
+  if (output instanceof HTMLElement) {
+    if (id === "twist") output.textContent = `${Math.round(value)}°`;
+    else if (id === "organic") output.textContent = value < 0.02 ? "0 box" : value > 0.98 ? "1 round" : value.toFixed(2);
+    else output.textContent = value.toFixed(2);
+  }
+  return value;
+}
+
 function rebuild(): void {
   drawBoard();
-  const floorPick = document.querySelectorAll("#floor-picks button");
-  floorPick.forEach((button) => {
-    if (button instanceof HTMLButtonElement) {
-      button.setAttribute("aria-pressed", button.textContent === floorsInput.value ? "true" : "false");
-    }
-  });
+  const coverage = readControl("coverage", FORM_CONTROLS.coverageDefault);
+  const setback = readControl("setback", FORM_CONTROLS.setbackDefault);
+  const twistDeg = readControl("twist", FORM_CONTROLS.twistDefaultDeg);
+  const organic = readControl("organic", FORM_CONTROLS.organicDefault);
   if (!closed) {
     clearBuilding();
     currentForm = null;
-    renderIsolate(null);
+    renderPlanFloors(null);
     const area = points.length >= 3 ? polygonArea(points) : 0;
     meta.textContent = points.length === 0 ? "No corners yet." : `${points.length} corners${area ? `, about ${area.toFixed(1)} m²` : ""}. Not closed.`;
     setStatus("Close the outline to generate the floors.", false);
@@ -696,7 +725,7 @@ function rebuild(): void {
   if (!boundary.ok) {
     clearBuilding();
     currentForm = null;
-    renderIsolate(null);
+    renderPlanFloors(null);
     setStatus(boundary.issues.join(" "), false);
     return;
   }
@@ -704,24 +733,30 @@ function rebuild(): void {
   if (!floors.ok) {
     clearBuilding();
     currentForm = null;
-    renderIsolate(null);
+    renderPlanFloors(null);
     setStatus(floors.issues.join(" "), false);
     return;
   }
   const seed = Number(seedInput.value);
-  const result = generateForm({ boundary: points, floors: floors.floors, seed });
+  const result = generateForm({
+    boundary: points,
+    floors: floors.floors,
+    seed,
+    controls: { coverage, setback, twistDeg, organic },
+  });
   if (!result.ok) {
     clearBuilding();
     currentForm = null;
-    renderIsolate(null);
+    renderPlanFloors(null);
     setStatus(result.issues.join(" "), false);
     return;
   }
   showForm(result.form);
   const varied = new Set(result.form.floors.map((floor) => JSON.stringify(floor.outer))).size;
   const repeated = result.form.floors.filter((floor) => floor.index > 0 && !floor.stepped).length;
+  const limitText = result.form.limits.length > 0 ? ` ${result.form.limits.join(" ")}` : "";
   setStatus(
-    `${result.form.floorCount} hollow ${result.form.floorCount === 1 ? "floor" : "floors"}, seed ${result.form.seed}. ${varied} distinct plate${varied === 1 ? "" : "s"}.${repeated ? ` ${repeated} level${repeated === 1 ? "" : "s"} repeat the plate below because a smaller step would leave the support.` : ""}`,
+    `${result.form.floorCount} closed ${result.form.floorCount === 1 ? "floor" : "floors"}, seed ${result.form.seed}. ${varied} distinct plate${varied === 1 ? "" : "s"}.${repeated ? ` ${repeated} level${repeated === 1 ? "" : "s"} repeat the plate below.` : ""}${limitText}`,
     true,
   );
 }
@@ -740,12 +775,11 @@ if (params.get("empty") === "1") {
   closed = false;
 }
 
-if (params.get("roof") === "1" && showRoof instanceof HTMLInputElement) showRoof.checked = true;
-if (params.get("slabs") === "0" && showSlabs instanceof HTMLInputElement) showSlabs.checked = false;
-if ((params.get("cutaway") === "1" || params.get("open") === "1") && cutawayInput instanceof HTMLInputElement) {
-  cutawayInput.checked = true;
+if (params.get("view") === "plan") {
+  viewMode = "plan";
+  const requested = Number(params.get("planFloor") ?? "0");
+  planFloor = Number.isInteger(requested) ? requested : 0;
 }
-if (params.get("view") === "top") viewMode = "top";
 
 window.addEventListener("resize", resize);
 const stage = viewCanvas.parentElement;

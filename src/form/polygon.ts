@@ -403,6 +403,120 @@ export function triangulate(poly: readonly Vec[]): number[] {
   return triangles;
 }
 
+/** Rounded rectangle. `segments` is the tessellation of each corner. Zero segments is a four-corner box. */
+export function roundedRectangle(
+  center: Vec,
+  width: number,
+  depth: number,
+  radius: number,
+  angle: number,
+  segments: number,
+): Vec[] {
+  const halfW = width / 2;
+  const halfD = depth / 2;
+  const curve = Math.max(0, Math.min(radius, halfW - 1e-3, halfD - 1e-3));
+  const local: Vec[] = [];
+  if (!(curve > 0.02) || segments < 1) {
+    local.push(
+      { x: halfW, y: -halfD },
+      { x: halfW, y: halfD },
+      { x: -halfW, y: halfD },
+      { x: -halfW, y: -halfD },
+    );
+  } else {
+    const corners = [
+      { x: halfW - curve, y: halfD - curve, start: 0 },
+      { x: -halfW + curve, y: halfD - curve, start: Math.PI / 2 },
+      { x: -halfW + curve, y: -halfD + curve, start: Math.PI },
+      { x: halfW - curve, y: -halfD + curve, start: Math.PI * 1.5 },
+    ];
+    for (const corner of corners) {
+      for (let step = 0; step < segments; step += 1) {
+        const theta = corner.start + (Math.PI / 2) * (step / segments);
+        local.push({ x: corner.x + curve * Math.cos(theta), y: corner.y + curve * Math.sin(theta) });
+      }
+    }
+  }
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return ensureCCW(
+    local.map((point) => ({
+      x: center.x + point.x * cosine - point.y * sine,
+      y: center.y + point.x * sine + point.y * cosine,
+    })),
+  );
+}
+
+function raySegment(origin: Vec, direction: Vec, a: Vec, b: Vec): number | null {
+  const sx = b.x - a.x;
+  const sy = b.y - a.y;
+  const den = direction.x * sy - direction.y * sx;
+  if (Math.abs(den) < 1e-12) return null;
+  const ox = a.x - origin.x;
+  const oy = a.y - origin.y;
+  const t = (ox * sy - oy * sx) / den;
+  const u = (ox * direction.y - oy * direction.x) / den;
+  if (t > 1e-7 && u >= -1e-5 && u <= 1 + 1e-5) return t;
+  return null;
+}
+
+function rayHit(origin: Vec, angle: number, poly: readonly Vec[]): Vec | null {
+  const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+  let best = Infinity;
+  let point: Vec | null = null;
+  for (let i = 0; i < poly.length; i += 1) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    if (!a || !b) continue;
+    const t = raySegment(origin, direction, a, b);
+    if (t !== null && t < best) {
+      best = t;
+      point = { x: origin.x + direction.x * t, y: origin.y + direction.y * t };
+    }
+  }
+  return point;
+}
+
+/**
+ * Triangles covering `outer` minus `hole`. Both must be convex, with the hole inside the outer.
+ * Rays are taken from the hole's centre, so the count stays within the two outlines.
+ */
+export function triangulateRing(outer: readonly Vec[], hole: readonly Vec[]): Vec[][] | null {
+  const shell = ensureCCW(outer);
+  const opening = ensureCCW(hole);
+  if (shell.length < 3 || opening.length < 3 || !polygonInside(opening, shell)) return null;
+  const origin = opening.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
+  origin.x /= opening.length;
+  origin.y /= opening.length;
+  if (!pointInPolygon(origin, opening, true)) return null;
+  const angles: number[] = [];
+  for (const point of [...shell, ...opening]) {
+    angles.push(Math.atan2(point.y - origin.y, point.x - origin.x));
+  }
+  angles.sort((left, right) => left - right);
+  const unique: number[] = [];
+  for (const angle of angles) {
+    const last = unique[unique.length - 1];
+    if (last === undefined || Math.abs(angle - last) > 1e-4) unique.push(angle);
+  }
+  if (unique.length < 3) return null;
+  const triangles: Vec[][] = [];
+  for (let i = 0; i < unique.length; i += 1) {
+    const start = unique[i];
+    const end = unique[(i + 1) % unique.length];
+    if (start === undefined || end === undefined) continue;
+    const outerStart = rayHit(origin, start, shell);
+    const outerEnd = rayHit(origin, end, shell);
+    const holeStart = rayHit(origin, start, opening);
+    const holeEnd = rayHit(origin, end, opening);
+    if (!outerStart || !outerEnd || !holeStart || !holeEnd) return null;
+    const span = Math.hypot(outerStart.x - outerEnd.x, outerStart.y - outerEnd.y);
+    if (span < 1e-4) continue;
+    triangles.push([outerStart, outerEnd, holeEnd], [outerStart, holeEnd, holeStart]);
+  }
+  return triangles.length > 0 ? triangles : null;
+}
+
 export function triangulationCovers(poly: readonly Vec[]): boolean {
   if (poly.length < 3) return false;
   return triangulate(poly).length === (poly.length - 2) * 3;

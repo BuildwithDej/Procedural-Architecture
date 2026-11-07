@@ -1,5 +1,5 @@
-import { outwardNormal, triangulate, type Vec } from "./polygon.ts";
-import type { BuildingForm, FloorShell } from "./generate.ts";
+import { outwardNormal, triangulate, triangulateRing, type Vec } from "./polygon.ts";
+import type { BuildingForm, FloorShell, LevelCap } from "./generate.ts";
 
 export interface MeshData {
   positions: number[];
@@ -18,7 +18,8 @@ export interface FloorGeometry {
   id: string;
   slab: MeshData;
   walls: WallMesh[];
-  roof: MeshData | null;
+  cap: MeshData | null;
+  capRole: LevelCap["role"];
 }
 
 function emptyMesh(): MeshData {
@@ -127,10 +128,46 @@ function wallEdgeMesh(outerA: Vec, outerB: Vec, innerB: Vec, innerA: Vec, y0: nu
   return { mesh, outward, south: outward.y < -0.35 };
 }
 
-function floorGeometry(floor: FloorShell, roof: boolean): FloorGeometry {
+function addRim(mesh: MeshData, poly: readonly Vec[], y0: number, y1: number, sign: 1 | -1): void {
+  for (let i = 0; i < poly.length; i += 1) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const normal = a && b ? outwardNormal(a, b) : null;
+    if (!a || !b || !normal) continue;
+    addQuad(
+      mesh,
+      [a.x, y0, a.y],
+      [b.x, y0, b.y],
+      [b.x, y1, b.y],
+      [a.x, y1, a.y],
+      [normal.x * sign, 0, normal.y * sign],
+    );
+  }
+}
+
+function capSolid(cap: LevelCap): MeshData | null {
+  if (cap.role === "covered") return null;
+  const y1 = cap.elevationM;
+  const y0 = y1 - cap.thicknessM;
+  if (!cap.hole) return capMesh(cap.outer, y0, y1);
+  const triangles = triangulateRing(cap.outer, cap.hole);
+  if (!triangles) return null;
+  const mesh = emptyMesh();
+  for (const triangle of triangles) {
+    const [a, b, c] = triangle;
+    if (!a || !b || !c) continue;
+    addTriangle(mesh, a, b, c, y1, 1);
+    addTriangle(mesh, a, b, c, y0, -1);
+  }
+  addRim(mesh, cap.outer, y0, y1, 1);
+  addRim(mesh, cap.hole, y0, y1, -1);
+  return mesh;
+}
+
+function floorGeometry(floor: FloorShell): FloorGeometry {
   const ySlabBottom = floor.elevationM;
   const ySlabTop = floor.elevationM + floor.slabThicknessM;
-  const yWallTop = floor.elevationM + floor.heightM;
+  const yWallTop = floor.cap.elevationM - 0.02;
   const walls: WallMesh[] = [];
   for (let i = 0; i < floor.outer.length; i += 1) {
     const outerA = floor.outer[i];
@@ -143,12 +180,13 @@ function floorGeometry(floor: FloorShell, roof: boolean): FloorGeometry {
   }
   return {
     id: floor.id,
-    slab: capMesh(floor.outer, ySlabBottom, ySlabTop),
+    slab: capMesh(floor.interior, ySlabBottom, ySlabTop),
     walls,
-    roof: roof ? capMesh(floor.outer, yWallTop, yWallTop + floor.slabThicknessM) : null,
+    cap: capSolid(floor.cap),
+    capRole: floor.cap.role,
   };
 }
 
 export function buildFormGeometry(form: BuildingForm): FloorGeometry[] {
-  return form.floors.map((floor, index) => floorGeometry(floor, index === form.floors.length - 1));
+  return form.floors.map((floor) => floorGeometry(floor));
 }

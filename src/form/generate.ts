@@ -5,12 +5,11 @@ import {
   ensureCCW,
   insetPolygon,
   minEdgeLength,
-  notchCorner,
   pointInPolygon,
   polygonArea,
   polygonInside,
+  roundedRectangle,
   selfIntersects,
-  setbackEdge,
   signedArea,
   triangulate,
   triangulationCovers,
@@ -41,8 +40,33 @@ export const FORM_SUPPORT = {
 export const FLOOR_COUNT_MIN = 1;
 export const FLOOR_COUNT_MAX = 5;
 
-/** Setback attempts per floor. Fixed so a bad outline cannot search without a bound. */
-const SHAPE_TRIES = 6;
+/**
+ * Slider ranges. Coverage is a fraction of the site. Setback and shape run from none to full.
+ * Twist is degrees of extra rotation at each level above the ground. None of these are a code limit.
+ */
+export const FORM_CONTROLS = {
+  coverageMin: 0.18,
+  coverageMax: 0.55,
+  coverageDefault: 0.34,
+  setbackMin: 0,
+  setbackMax: 1,
+  setbackDefault: 0.45,
+  twistMinDeg: -25,
+  twistMaxDeg: 25,
+  twistDefaultDeg: 0,
+  organicMin: 0,
+  organicMax: 1,
+  organicDefault: 0,
+  /** Tessellation of one rounded corner. A box uses none. A full curve uses this many. */
+  maxCornerSegments: 5,
+} as const;
+
+export interface FormControls {
+  coverage: number;
+  setback: number;
+  twistDeg: number;
+  organic: number;
+}
 
 /** Floor plate. The polygon is the outer face of the walls, not a centerline. */
 export interface SlabPlate {
@@ -65,7 +89,20 @@ export interface WallRun {
   thicknessM: number;
 }
 
-/** Flat cap on the top plate. Hiding it is a view change; the cap stays in the data. */
+/**
+ * Exposed horizontal closure. A roof covers the top plate. A terrace is the setback ring.
+ * Covered means the next floor's slab closes this level, so no second cap is drawn.
+ */
+export interface LevelCap {
+  id: string;
+  role: "roof" | "terrace" | "covered";
+  outer: Vec[];
+  hole: Vec[] | null;
+  elevationM: number;
+  thicknessM: number;
+}
+
+/** Flat cap on the top plate. The same surface as the top floor's roof cap. */
 export interface RoofCap {
   id: string;
   polygon: Vec[];
@@ -84,7 +121,8 @@ export interface FloorShell {
   interior: Vec[];
   slab: SlabPlate;
   walls: WallRun[];
-  /** False when every smaller plate failed and this level repeats the one below. */
+  cap: LevelCap;
+  /** False when this level repeats the plate below. */
   stepped: boolean;
 }
 
@@ -93,6 +131,9 @@ export interface BuildingForm {
   floorCount: number;
   design: typeof FORM_DESIGN;
   support: typeof FORM_SUPPORT;
+  controls: FormControls;
+  /** Slider requests the outline could not meet in full. */
+  limits: string[];
   /** One simple site ring. Metres, x east, y north. No holes. */
   site: Vec[];
   floors: FloorShell[];
@@ -206,25 +247,6 @@ function interiorPoint(poly: readonly Vec[]): Vec {
   return best;
 }
 
-function orientedRect(center: Vec, width: number, depth: number, angle: number): Vec[] {
-  const cosine = Math.cos(angle);
-  const sine = Math.sin(angle);
-  const hx = width / 2;
-  const hy = depth / 2;
-  const corners = [
-    [-hx, -hy],
-    [hx, -hy],
-    [hx, hy],
-    [-hx, hy],
-  ];
-  return ensureCCW(
-    corners.map(([x, y]) => ({
-      x: center.x + (x ?? 0) * cosine - (y ?? 0) * sine,
-      y: center.y + (x ?? 0) * sine + (y ?? 0) * cosine,
-    })),
-  );
-}
-
 function scaleAbout(poly: readonly Vec[], origin: Vec, scale: number): Vec[] {
   return poly.map((point) => ({
     x: origin.x + (point.x - origin.x) * scale,
@@ -250,125 +272,225 @@ function fitInside(poly: readonly Vec[], origin: Vec, container: readonly Vec[])
   return best;
 }
 
-/** A plate is a volume when a smaller copy of it still exists. Thin strips fail this. */
-function isChunky(poly: readonly Vec[], clearance: number): boolean {
-  return insetPolygon(poly, clearance) !== null;
+function cornerSegments(organic: number): number {
+  if (organic < 0.04) return 0;
+  return Math.min(FORM_CONTROLS.maxCornerSegments, Math.max(2, Math.round(organic * FORM_CONTROLS.maxCornerSegments)));
 }
 
-function placeGround(site: readonly Vec[], random: () => number): Vec[] | null {
-  const span = Math.sqrt(polygonArea(site));
-  const yard = insetPolygon(site, Math.min(1.8, Math.max(0.6, span * 0.05))) ?? site;
-  const anchor = interiorPoint(yard);
-  const clearance = insetPolygon(site, 2.6) ? 1.7 : insetPolygon(site, 1.5) ? 0.9 : 0.4;
-  const accepted: Vec[][] = [];
-  const consider = (poly: Vec[] | null) => {
-    if (!poly) return;
-    const plate = plateWorks(poly, site, site);
-    if (!plate || !isChunky(plate, clearance)) return;
-    if (polygonArea(plate) > polygonArea(site) * 0.62) return;
-    if (polygonArea(plate) < Math.max(FORM_DESIGN.minInteriorAreaM2 + 2, polygonArea(site) * 0.12)) return;
-    accepted.push(plate);
-  };
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const fraction = 0.28 + random() * 0.26;
-    const aspect = 0.6 + random() * 0.95;
-    const angle = random() * Math.PI;
-    const want = polygonArea(site) * fraction;
-    const width = Math.sqrt(want * aspect);
-    const depth = want / width;
-    const rollX = random();
-    const rollY = random();
-    const shifted = {
-      x: anchor.x + (rollX - 0.5) * span * 0.22,
-      y: anchor.y + (rollY - 0.5) * span * 0.22,
-    };
-    const origin = pointInPolygon(shifted, yard, true) ? shifted : anchor;
-    const fitted = fitInside(orientedRect(origin, width, depth, angle), origin, yard);
-    consider(fitted);
-    if (fitted) {
-      const bite = Math.min(width, depth) * (0.22 + random() * 0.12);
-      consider(notchCorner(fitted, Math.floor(random() * fitted.length) % fitted.length, bite, bite * (0.7 + random() * 0.4)));
-    }
-  }
-  if (accepted.length === 0) {
-    let fallback: Vec[] | null = null;
-    for (const distance of [span * 0.12, span * 0.2, 2.4, 3.6]) {
-      const next = insetPolygon(site, distance);
-      if (next && isChunky(next, clearance)) fallback = next;
-    }
-    consider(fallback);
-  }
-  if (accepted.length === 0) return plateWorks(yard, site, site);
-  const target = 0.36 + random() * 0.12;
-  accepted.sort(
-    (left, right) =>
-      Math.abs(polygonArea(left) / polygonArea(site) - target) - Math.abs(polygonArea(right) / polygonArea(site) - target),
+function rotateAbout(poly: readonly Vec[], origin: Vec, radians: number): Vec[] {
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  return ensureCCW(
+    poly.map((point) => {
+      const x = point.x - origin.x;
+      const y = point.y - origin.y;
+      return { x: origin.x + x * cosine - y * sine, y: origin.y + x * sine + y * cosine };
+    }),
   );
-  return accepted[0] ?? null;
 }
 
-function stepPlate(base: readonly Vec[], site: readonly Vec[], random: () => number): Vec[] | null {
-  const area = polygonArea(base);
-  const span = Math.sqrt(area);
-  const target = 0.66 + random() * 0.16;
-  const clearance = insetPolygon(base, 2.4) ? 1.5 : 0.7;
-  const rolls: number[] = [];
-  for (let i = 0; i < SHAPE_TRIES; i += 1) rolls.push(random());
+function nearlySamePlate(left: readonly Vec[], right: readonly Vec[]): boolean {
+  const leftArea = polygonArea(left);
+  const rightArea = polygonArea(right);
+  if (leftArea < 1e-4 || rightArea < 1e-4) return false;
+  const ratio = leftArea / rightArea;
+  return ratio > 0.97 && ratio < 1.03 && polygonInside(left, right) && polygonInside(right, left);
+}
 
-  const accepted: Vec[][] = [];
-  const consider = (poly: Vec[] | null) => {
-    if (!poly) return;
-    const plate = plateWorks(poly, base, site);
-    if (!plate || !isChunky(plate, clearance)) return;
-    const ratio = polygonArea(plate) / area;
-    if (ratio > 0.9 || ratio < 0.5) return;
-    accepted.push(plate);
+export function validateControls(
+  value: Partial<FormControls> | undefined,
+): { ok: true; controls: FormControls } | { ok: false; issues: string[] } {
+  const raw = value ?? {};
+  const controls: FormControls = {
+    coverage: raw.coverage ?? FORM_CONTROLS.coverageDefault,
+    setback: raw.setback ?? FORM_CONTROLS.setbackDefault,
+    twistDeg: raw.twistDeg ?? FORM_CONTROLS.twistDefaultDeg,
+    organic: raw.organic ?? FORM_CONTROLS.organicDefault,
   };
+  const issues: string[] = [];
+  const check = (name: string, number: number, min: number, max: number, unit: string) => {
+    if (!Number.isFinite(number)) issues.push(`${name} must be a finite number.`);
+    else if (number < min || number > max) issues.push(`${name} must be from ${min} to ${max}${unit}.`);
+  };
+  check("Coverage", controls.coverage, FORM_CONTROLS.coverageMin, FORM_CONTROLS.coverageMax, " of the site");
+  check("Setback", controls.setback, FORM_CONTROLS.setbackMin, FORM_CONTROLS.setbackMax, "");
+  check("Twist", controls.twistDeg, FORM_CONTROLS.twistMinDeg, FORM_CONTROLS.twistMaxDeg, "°");
+  check("Shape", controls.organic, FORM_CONTROLS.organicMin, FORM_CONTROLS.organicMax, "");
+  if (issues.length > 0) return { ok: false, issues };
+  return { ok: true, controls };
+}
 
-  consider(insetPolygon(base, Math.max(0.45, span * 0.06)));
-  consider(insetPolygon(base, Math.min(1.8, span * 0.12)));
-
-  for (let attempt = 0; attempt < SHAPE_TRIES; attempt += 1) {
-    const roll = rolls[attempt] ?? 0;
-    const edge = Math.floor(roll * base.length) % base.length;
-    const distance = Math.max(0.7, span * (0.08 + ((rolls[(attempt + 1) % SHAPE_TRIES] ?? roll) * 0.2)));
-    consider(setbackEdge(base, edge, distance));
-    const corner = Math.floor(((rolls[(attempt + 3) % SHAPE_TRIES] ?? roll) * base.length) % base.length);
-    const bitePrev = Math.max(1.6, span * (0.22 + roll * 0.42));
-    const biteNext = Math.max(1.6, span * (0.18 + ((rolls[(attempt + 2) % SHAPE_TRIES] ?? roll) * 0.4)));
-    consider(notchCorner(base, corner, bitePrev, biteNext));
-    if (attempt === 0) {
-      const deep = setbackEdge(base, edge, Math.min(span * 0.34, minEdgeLength(base) * 0.45));
-      consider(deep);
-      if (deep) {
-        const nextEdge = Math.floor((rolls[2] ?? 0) * deep.length) % deep.length;
-        consider(setbackEdge(deep, nextEdge, Math.max(0.6, span * 0.08)));
+function placeGround(
+  site: readonly Vec[],
+  random: () => number,
+  controls: FormControls,
+  limits: string[],
+): Vec[] | null {
+  const span = Math.sqrt(polygonArea(site));
+  const yard = insetPolygon(site, Math.min(1.6, Math.max(0.5, span * 0.04))) ?? site;
+  const anchor = interiorPoint(yard);
+  const aspect = 0.62 + random() * 0.7;
+  const angle = random() * Math.PI;
+  const shifted = {
+    x: anchor.x + (random() - 0.5) * span * 0.16,
+    y: anchor.y + (random() - 0.5) * span * 0.16,
+  };
+  const preferred = pointInPolygon(shifted, yard, true) ? shifted : anchor;
+  const want = Math.max(polygonArea(site) * controls.coverage, FORM_DESIGN.minInteriorAreaM2 + 2);
+  const segments = cornerSegments(controls.organic);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const point of yard) {
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+    minY = Math.min(minY, point.y);
+    maxY = Math.max(maxY, point.y);
+  }
+  const origins = [preferred, anchor];
+  for (const fx of [0.32, 0.5, 0.68]) {
+    for (const fy of [0.32, 0.5, 0.68]) {
+      const point = { x: minX + (maxX - minX) * fx, y: minY + (maxY - minY) * fy };
+      if (pointInPolygon(point, yard, true)) origins.push(point);
+    }
+  }
+  const placeAt = (origin: Vec, plateWidth: number, plateDepth: number, plateAngle: number): Vec[] | null => {
+    const radius = controls.organic * Math.min(plateWidth, plateDepth) * 0.5;
+    const drawn = roundedRectangle(origin, plateWidth, plateDepth, radius, plateAngle, segments);
+    let low = 0.12;
+    let high = 1;
+    let best: Vec[] | null = null;
+    for (let step = 0; step < 8; step += 1) {
+      const scale = (low + high) / 2;
+      const scaled = scale > 0.985 ? drawn : scaleAbout(drawn, origin, scale);
+      const plate = polygonInside(scaled, site) ? plateWorks(scaled, site, site) : null;
+      if (plate) {
+        best = plate;
+        low = scale;
+      } else {
+        high = scale;
       }
     }
-  }
-
-  if (accepted.length === 0) return null;
-  const score = (plate: Vec[]) => {
-    const ratio = Math.abs(polygonArea(plate) / area - target);
-    const sameSilhouette = plate.length === base.length ? 0.14 : 0;
-    return ratio + sameSilhouette;
+    return best;
   };
-  accepted.sort((left, right) => score(left) - score(right));
-  return accepted[0] ?? null;
+  const width = Math.sqrt(want * aspect);
+  const depth = want / Math.max(width, 0.01);
+  let plate: Vec[] | null = null;
+  let plateGap = Infinity;
+  for (const origin of origins) {
+    const candidate = placeAt(origin, width, depth, angle);
+    if (!candidate) continue;
+    const gap = Math.abs(polygonArea(candidate) - want);
+    if (gap < plateGap) {
+      plate = candidate;
+      plateGap = gap;
+    }
+  }
+  if (!plate || polygonArea(plate) < want * 0.82) {
+    const rescueAngles = [0, angle];
+    const rescueAspects = [aspect, 0.55, 2.1];
+    const lowOrigin = { x: minX + (maxX - minX) * 0.5, y: minY + (maxY - minY) * 0.28 };
+    const rescueOrigins = pointInPolygon(lowOrigin, site, true) ? [anchor, lowOrigin] : [anchor];
+    for (const rescueAngle of rescueAngles) {
+      for (const rescueAspect of rescueAspects) {
+        const rescueWidth = Math.sqrt(want * rescueAspect);
+        const rescueDepth = want / Math.max(rescueWidth, 0.01);
+        for (const origin of rescueOrigins) {
+          const candidate = placeAt(origin, rescueWidth, rescueDepth, rescueAngle);
+          if (!candidate) continue;
+          const gap = Math.abs(polygonArea(candidate) - want);
+          if (!plate || gap < plateGap) {
+            plate = candidate;
+            plateGap = gap;
+          }
+        }
+      }
+    }
+    if (plate && Math.abs(angle) > 0.05) {
+      limits.push("The footprint angle was adjusted so the coverage slider could be met.");
+    }
+  }
+  if (!plate) return null;
+  const got = polygonArea(plate) / polygonArea(site);
+  if (got < controls.coverage - 0.03) {
+    limits.push(
+      `Coverage asked for ${controls.coverage.toFixed(2)} of the site. This outline held ${got.toFixed(2)}.`,
+    );
+  }
+  return plate;
 }
 
-export function generateForm(input: { boundary: readonly Vec[]; floors: number; seed: number }): FormResult {
+function nextPlate(
+  current: readonly Vec[],
+  site: readonly Vec[],
+  controls: FormControls,
+  floorNumber: number,
+  limits: string[],
+): { plate: Vec[]; stepped: boolean } {
+  const origin = interiorPoint(current);
+  const linear = 1 - controls.setback * 0.36;
+  let shaped = scaleAbout(current, origin, linear);
+  if (controls.twistDeg !== 0) shaped = rotateAbout(shaped, origin, (controls.twistDeg * Math.PI) / 180);
+  const requestedArea = polygonArea(shaped);
+  let fitted = shaped;
+  if (!polygonInside(fitted, current)) {
+    const onPlate = fitInside(fitted, origin, current);
+    if (!onPlate) {
+      limits.push(`Floor ${floorNumber} kept the plate below. The requested turn or setback left the shell.`);
+      return { plate: current.map((point) => ({ x: point.x, y: point.y })), stepped: false };
+    }
+    fitted = onPlate;
+    if (polygonArea(fitted) < requestedArea * 0.94) {
+      limits.push(
+        `Floor ${floorNumber} was reduced so a ${controls.twistDeg}° twist stays on the floor below and inside the site.`,
+      );
+    }
+  }
+  const plate = plateWorks(fitted, current, site);
+  if (!plate) {
+    limits.push(`Floor ${floorNumber} kept the plate below. A smaller plate would not stay a full hollow shell.`);
+    return { plate: current.map((point) => ({ x: point.x, y: point.y })), stepped: false };
+  }
+  const stepped = !nearlySamePlate(plate, current);
+  if (controls.setback > 0.05 && !stepped) {
+    limits.push(`Floor ${floorNumber} could not step back further without losing the shell.`);
+  }
+  return { plate, stepped };
+}
+
+function levelCap(floorNumber: number, outer: readonly Vec[], next: readonly Vec[] | null, elevationM: number): LevelCap {
+  const same = next ? nearlySamePlate(outer, next) : false;
+  return {
+    id: next ? (same ? `floor-${floorNumber}-covered` : `floor-${floorNumber}-terrace`) : `floor-${floorNumber}-roof`,
+    role: next ? (same ? "covered" : "terrace") : "roof",
+    outer: outer.map((point) => ({ x: point.x, y: point.y })),
+    hole: next && !same ? next.map((point) => ({ x: point.x, y: point.y })) : null,
+    elevationM,
+    thicknessM: 0.06,
+  };
+}
+
+export function generateForm(input: {
+  boundary: readonly Vec[];
+  floors: number;
+  seed: number;
+  controls?: Partial<FormControls>;
+}): FormResult {
   const count = validateFloorCount(input.floors);
   if (!count.ok) return count;
   if (!Number.isInteger(input.seed) || !Number.isFinite(input.seed)) {
     return { ok: false, issues: ["The seed must be a finite whole number."] };
   }
+  const controls = validateControls(input.controls);
+  if (!controls.ok) return controls;
   const boundary = validateBoundary(input.boundary);
   if (!boundary.ok) return boundary;
   const site = boundary.polygon;
   const random = mulberry32(input.seed);
+  const limits: string[] = [];
 
-  const ground = placeGround(site, random);
+  const ground = placeGround(site, random, controls.controls, limits);
   if (!ground) {
     return {
       ok: false,
@@ -378,17 +500,18 @@ export function generateForm(input: { boundary: readonly Vec[]; floors: number; 
     };
   }
 
+  const plates: { plate: Vec[]; stepped: boolean }[] = [{ plate: ground, stepped: false }];
+  for (let index = 1; index < count.floors; index += 1) {
+    const below = plates[index - 1];
+    if (!below) break;
+    plates.push(nextPlate(below.plate, site, controls.controls, index + 1, limits));
+  }
+
   const floors: FloorShell[] = [];
-  let current = ground;
-  for (let index = 0; index < count.floors; index += 1) {
-    let stepped = false;
-    if (index > 0) {
-      const next = stepPlate(current, site, random);
-      if (next && polygonArea(next) < polygonArea(current) - 0.05) {
-        current = next;
-        stepped = true;
-      }
-    }
+  for (let index = 0; index < plates.length; index += 1) {
+    const entry = plates[index];
+    if (!entry) continue;
+    const current = entry.plate;
     const interior = insetPolygon(current, FORM_DESIGN.wallThicknessM);
     if (!interior || !wallFootprintsInside(current, interior, site) || !polygonInside(current, site)) {
       return { ok: false, issues: [`Floor ${index + 1} could not stay a hollow shell inside the site. Nothing was kept.`] };
@@ -397,23 +520,34 @@ export function generateForm(input: { boundary: readonly Vec[]; floors: number; 
     const outer = current.map((point) => ({ x: point.x, y: point.y }));
     const hole = interior.map((point) => ({ x: point.x, y: point.y }));
     const floorNumber = index + 1;
-    const walls: WallRun[] = outer.map((start, edgeIndex) => {
+    const next = plates[index + 1]?.plate ?? null;
+    const walls: WallRun[] = [];
+    let brokenWall = false;
+    for (let edgeIndex = 0; edgeIndex < outer.length; edgeIndex += 1) {
+      const start = outer[edgeIndex];
       const end = outer[(edgeIndex + 1) % outer.length];
       const interiorStart = hole[edgeIndex];
       const interiorEnd = hole[(edgeIndex + 1) % hole.length];
-      if (!end || !interiorStart || !interiorEnd) {
-        throw new Error(`Floor ${floorNumber} lost a wall edge.`);
+      if (!start || !end || !interiorStart || !interiorEnd) {
+        brokenWall = true;
+        break;
       }
-      return {
+      walls.push({
         id: `floor-${floorNumber}-wall-${edgeIndex}`,
         edgeIndex,
         outer: [{ x: start.x, y: start.y }, { x: end.x, y: end.y }],
-        interior: [{ x: interiorStart.x, y: interiorStart.y }, { x: interiorEnd.x, y: interiorEnd.y }],
+        interior: [
+          { x: interiorStart.x, y: interiorStart.y },
+          { x: interiorEnd.x, y: interiorEnd.y },
+        ],
         elevationM: elevationM + FORM_DESIGN.slabThicknessM,
         heightM: FORM_DESIGN.floorHeightM - FORM_DESIGN.slabThicknessM,
         thicknessM: FORM_DESIGN.wallThicknessM,
-      };
-    });
+      });
+    }
+    if (brokenWall) {
+      return { ok: false, issues: [`Floor ${floorNumber} lost a wall edge.`] };
+    }
     floors.push({
       id: `floor-${floorNumber}`,
       index,
@@ -430,7 +564,8 @@ export function generateForm(input: { boundary: readonly Vec[]; floors: number; 
         thicknessM: FORM_DESIGN.slabThicknessM,
       },
       walls,
-      stepped,
+      cap: levelCap(floorNumber, outer, next, elevationM + FORM_DESIGN.floorHeightM),
+      stepped: entry.stepped,
     });
   }
 
@@ -441,6 +576,8 @@ export function generateForm(input: { boundary: readonly Vec[]; floors: number; 
     floorCount: count.floors,
     design: FORM_DESIGN,
     support: FORM_SUPPORT,
+    controls: controls.controls,
+    limits,
     site,
     floors,
     roof: {
@@ -481,10 +618,14 @@ export function formContainmentIssues(form: BuildingForm): string[] {
     if (floor.walls.length !== floor.outer.length) {
       issues.push(`${floor.id} does not have one wall per outer edge.`);
     }
+    if (floor.cap.role === "roof" && floor.cap.hole) issues.push(`${floor.id} roof should cover the whole plate.`);
+    if (floor.cap.role === "terrace" && !floor.cap.hole) issues.push(`${floor.id} terrace is missing its opening.`);
+    if (floor.cap.role === "covered" && floor.cap.hole) issues.push(`${floor.id} is covered and should not draw a second cap.`);
+    if (!polygonInside(floor.cap.outer, form.site)) issues.push(`${floor.id} cap leaves the site.`);
     below = floor.outer;
   }
   const top = form.floors[form.floors.length - 1];
-  if (!top || !polygonInside(form.roof.polygon, top.outer)) {
+  if (!top || top.cap.role !== "roof" || !polygonInside(form.roof.polygon, top.outer)) {
     issues.push("The roof does not sit on the top floor.");
   }
   return issues;

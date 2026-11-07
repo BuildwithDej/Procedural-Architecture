@@ -4,8 +4,10 @@ import {
   FORM_DESIGN,
   FORM_SUPPORT,
   formContainmentIssues,
+  FORM_CONTROLS,
   generateForm,
   validateBoundary,
+  validateControls,
   validateFloorCount,
 } from "../src/form/generate.ts";
 import { FORM_PRESETS } from "../src/form/presets.ts";
@@ -16,9 +18,11 @@ import {
   pointInPolygon,
   polygonArea,
   polygonInside,
+  roundedRectangle,
   segmentInPolygon,
   selfIntersects,
   setbackEdge,
+  triangulateRing,
   triangulationCovers,
   type Vec,
 } from "../src/form/polygon.ts";
@@ -216,8 +220,8 @@ describe("hollow form", () => {
       expect(geometry).toHaveLength(floors);
       geometry.forEach((floor, index) => {
         expect(floor.walls.length).toBeGreaterThan(2);
-        expect(floor.roof === null).toBe(index !== floors - 1);
-        if (floor.roof) expect(triangleNormal(floor.roof, 0).y).toBeGreaterThan(0.5);
+        expect(floor.capRole).toBe(result.form.floors[index]?.cap.role);
+        if (floor.cap) expect(triangleNormal(floor.cap, 0).y).toBeGreaterThan(0.5);
         expect(floor.walls.length).toBe(result.form.floors[index]?.outer.length);
         for (const wall of floor.walls) {
           expect(wall.mesh.indices.length).toBe(18);
@@ -231,7 +235,7 @@ describe("hollow form", () => {
         const positions = [
           ...floor.slab.positions,
           ...floor.walls.flatMap((wall) => wall.mesh.positions),
-          ...(floor.roof?.positions ?? []),
+          ...(floor.cap?.positions ?? []),
         ];
         for (let i = 0; i < positions.length; i += 3) {
           const point = { x: positions[i] ?? 0, y: positions[i + 2] ?? 0 };
@@ -287,6 +291,115 @@ describe("hollow form", () => {
         expect(polygonInside(upper.outer, lower.outer)).toBe(true);
       }
     }
+  });
+
+  it("rejects slider values outside their ranges", () => {
+    expect(validateControls({ coverage: 2, setback: 0, twistDeg: 0, organic: 0 }).ok).toBe(false);
+    expect(validateControls({ coverage: 0.3, setback: 0, twistDeg: 80, organic: 0 }).ok).toBe(false);
+    expect(validateControls({ coverage: 0.3, setback: -0.2, twistDeg: 0, organic: 0 }).ok).toBe(false);
+    expect(validateControls({ coverage: Number.NaN, setback: 0, twistDeg: 0, organic: 0 }).ok).toBe(false);
+    const result = generateForm({
+      boundary: FORM_PRESETS.rectangle ?? [],
+      floors: 2,
+      seed: 1,
+      controls: { coverage: 0.9, setback: 0, twistDeg: 0, organic: 0 },
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("lets coverage, setback, twist, and shape change the same site", () => {
+    const notch = FORM_PRESETS.notch;
+    if (!notch) throw new Error("missing notch");
+    const shared = { boundary: notch, floors: 5, seed: 4 };
+    const box = generateForm({ ...shared, controls: { coverage: 0.3, setback: 0.55, twistDeg: 0, organic: 0 } });
+    const round = generateForm({ ...shared, controls: { coverage: 0.3, setback: 0.55, twistDeg: 0, organic: 1 } });
+    const low = generateForm({ ...shared, controls: { coverage: 0.2, setback: 0.55, twistDeg: 0, organic: 0 } });
+    const high = generateForm({ ...shared, controls: { coverage: 0.5, setback: 0.55, twistDeg: 0, organic: 0 } });
+    const flat = generateForm({ ...shared, controls: { coverage: 0.34, setback: 0, twistDeg: 0, organic: 0 } });
+    const steep = generateForm({ ...shared, controls: { coverage: 0.34, setback: 1, twistDeg: 0, organic: 0 } });
+    const turned = generateForm({ ...shared, controls: { coverage: 0.3, setback: 0.2, twistDeg: 20, organic: 0 } });
+    for (const result of [box, round, low, high, flat, steep, turned]) {
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(formContainmentIssues(result.form)).toEqual([]);
+      expect(result.form.floors[result.form.floors.length - 1]?.cap.role).toBe("roof");
+    }
+    if (!box.ok || !round.ok || !low.ok || !high.ok || !flat.ok || !steep.ok || !turned.ok) return;
+    expect(box.form.floors[0]?.outer.length).toBe(4);
+    expect((round.form.floors[0]?.outer.length ?? 0) > 8).toBe(true);
+    const rounded = round.form.floors[0]?.outer ?? [];
+    const curved = rounded.some((point, index) => {
+      const next = rounded[(index + 1) % rounded.length];
+      if (!next) return false;
+      const dx = Math.abs(next.x - point.x);
+      const dy = Math.abs(next.y - point.y);
+      return dx > 0.15 && dy > 0.15;
+    });
+    expect(curved).toBe(true);
+    const lowArea = polygonArea(low.form.floors[0]?.outer ?? []);
+    const highArea = polygonArea(high.form.floors[0]?.outer ?? []);
+    expect(highArea).toBeGreaterThan(lowArea * 1.4);
+    const flatTop = polygonArea(flat.form.floors[4]?.outer ?? []);
+    const flatGround = polygonArea(flat.form.floors[0]?.outer ?? []);
+    const steepTop = polygonArea(steep.form.floors[4]?.outer ?? []);
+    const steepGround = polygonArea(steep.form.floors[0]?.outer ?? []);
+    expect(flatTop / flatGround).toBeGreaterThan(0.9);
+    expect(steepTop / steepGround).toBeLessThan(0.55);
+    expect(steep.form.floors[0]?.cap.role).toBe("terrace");
+    const groundEdge = turned.form.floors[0]?.outer ?? [];
+    const upperEdge = turned.form.floors[2]?.outer ?? [];
+    const angleOf = (poly: Vec[]) => {
+      const a = poly[0];
+      const b = poly[1];
+      if (!a || !b) return 0;
+      return Math.atan2(b.y - a.y, b.x - a.x);
+    };
+    expect(Math.abs(angleOf(upperEdge) - angleOf(groundEdge))).toBeGreaterThan(0.15);
+    const again = generateForm({ ...shared, controls: { coverage: 0.3, setback: 0.55, twistDeg: 0, organic: 1 } });
+    expect(again.ok && JSON.stringify(again.ok ? again.form.floors : []) === JSON.stringify(round.form.floors)).toBe(true);
+  });
+
+  it("keeps extreme slider combinations inside a concave site", () => {
+    const notch = FORM_PRESETS.notch ?? [];
+    for (const coverage of [FORM_CONTROLS.coverageMin, FORM_CONTROLS.coverageMax]) {
+      for (const setback of [FORM_CONTROLS.setbackMin, FORM_CONTROLS.setbackMax]) {
+        for (const twistDeg of [FORM_CONTROLS.twistMinDeg, 0, FORM_CONTROLS.twistMaxDeg]) {
+          for (const organic of [FORM_CONTROLS.organicMin, FORM_CONTROLS.organicMax]) {
+            for (const seed of [1, 7]) {
+              const result = generateForm({
+                boundary: notch,
+                floors: 5,
+                seed,
+                controls: { coverage, setback, twistDeg, organic },
+              });
+              expect(result.ok).toBe(true);
+              if (!result.ok) return;
+              expect(formContainmentIssues(result.form)).toEqual([]);
+              expect(result.form.controls).toEqual({ coverage, setback, twistDeg, organic });
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("covers a terrace ring without filling the hole", () => {
+    const outer = roundedRectangle({ x: 0, y: 0 }, 16, 10, 2, 0.4, 4);
+    const hole = roundedRectangle({ x: 0.2, y: -0.1 }, 9, 5.5, 1.4, 0.7, 4);
+    const triangles = triangulateRing(outer, hole);
+    expect(triangles).not.toBeNull();
+    if (!triangles) return;
+    let area = 0;
+    for (const triangle of triangles) {
+      const [a, b, c] = triangle;
+      if (!a || !b || !c) continue;
+      area += Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2;
+      const mid = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
+      expect(pointInPolygon(mid, outer, true)).toBe(true);
+      expect(pointInPolygon(mid, hole, false)).toBe(false);
+    }
+    expect(area).toBeGreaterThan((polygonArea(outer) - polygonArea(hole)) * 0.9);
+    expect(area).toBeLessThan((polygonArea(outer) - polygonArea(hole)) * 1.1);
   });
 
   it("does not build from an invalid outline", () => {

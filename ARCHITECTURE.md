@@ -23,7 +23,9 @@ A floor is kept only when its outer ring, interior ring, and each wall quad stay
 
 The orthographic camera is fit to the site extruded up through the roof, in the camera's own view, with a margin. A resize keeps that view direction and refits the frustum. Changing the outline, floor count, or seed frames the model again.
 
-The site ring is a limit. The ground floor is a compact plate inside it, with yard left around the plate. It does not trace a concave outline. Upper floors are smaller complete plates on the one below. A level that cannot step repeats the plate below.
+The site ring is a limit. Coverage, setback, twist, and shape are stored on the form and drive the plates. Shape 0 is a rectangle. Shape 1 rounds each corner with at most five straight segments. Twist turns each upper plate, then shrinks it onto the plate below when the turn would overhang. A note is kept when a slider cannot be met in full.
+
+Every floor has a slab, a closed wall ring, and a cap. The top cap is the roof. A setback leaves a terrace ring. A repeated plate is covered by the next slab, so a second cap is not drawn on the same plane. The model view shows those caps. Plan view can hide the levels above a chosen floor, and its cap, so the interior reads from above. Returning to the model restores every cap.
 
 Each wall is one outer face, one inner face, and a top that shows the thickness. Those faces are wound outward, inward, and up. Neighbouring walls meet at the shared corner. The south-side cutaway is off unless it is switched on, and it only hides faces.
 
