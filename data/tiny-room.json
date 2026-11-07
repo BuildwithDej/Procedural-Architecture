@@ -1,0 +1,13 @@
+{
+  "id": "tiny-room",
+  "name": "Tiny room",
+  "width": 1.8,
+  "depth": 1.5,
+  "height": 2.2,
+  "doors": [
+    { "wall": "south", "position": 0.2, "width": 0.7, "height": 2 }
+  ],
+  "windows": [
+    { "wall": "east", "position": 0.25, "width": 0.6, "sill": 0.7, "height": 0.8 }
+  ]
+}
